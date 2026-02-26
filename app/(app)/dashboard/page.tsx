@@ -13,6 +13,7 @@ const suppliers = [
 const quickActions = [
   { href: '/fridge', label: 'Scanner le frigo', icon: '📷', description: 'Prendre une photo' },
   { href: '/shopping-list', label: 'Mes courses', icon: '🛍️', description: 'Voir la liste' },
+  { href: '/analytics', label: 'Analyse IA', icon: '✨', description: 'Vos habitudes' },
   { href: '/history', label: 'Commandes', icon: '📦', description: 'Historique' },
 ]
 
@@ -48,7 +49,7 @@ export default async function DashboardPage() {
         {/* Quick actions */}
         <section className="animate-fade-up animate-delay-100">
           <h2 className="font-display text-base text-forest-700 mb-3 font-medium">Actions rapides</h2>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-4 gap-2.5">
             {quickActions.map((action) => (
               <Link key={action.href} href={action.href}>
                 <div className="card p-3.5 text-center active:scale-95 transition-transform duration-150">
@@ -88,28 +89,33 @@ export default async function DashboardPage() {
           </div>
         </section>
 
-        {/* Next suggested order */}
+        {/* Analyse IA teaser */}
         <section className="animate-fade-up animate-delay-300">
-          <h2 className="font-display text-base text-forest-700 mb-3 font-medium">Prochaine commande suggérée</h2>
-          <div className="card-elevated px-5 py-4 bg-forest-800 text-cream-50 relative overflow-hidden">
-            {/* Decorative circle */}
-            <div className="absolute -right-8 -top-8 w-32 h-32 rounded-full bg-forest-600/40" />
-            <div className="absolute -right-4 -bottom-8 w-24 h-24 rounded-full bg-terra-500/20" />
+          <h2 className="font-display text-base text-forest-700 mb-3 font-medium">Intelligence courses</h2>
+          <Link href="/analytics">
+            <div className="card-elevated px-5 py-4 bg-forest-800 text-cream-50 relative overflow-hidden active:scale-[0.98] transition-transform">
+              <div className="absolute -right-8 -top-8 w-32 h-32 rounded-full bg-forest-600/40" />
+              <div className="absolute -right-4 -bottom-8 w-24 h-24 rounded-full bg-terra-500/20" />
 
-            <div className="relative">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">🌿</span>
-                <span className="text-sm font-medium font-body text-cream-100">La Fourche</span>
-              </div>
-              <p className="font-display text-2xl font-medium text-cream-50 mb-1">Vendredi prochain</p>
-              <p className="text-xs text-cream-100/60 font-body">Sur la base de vos habitudes (tous les ~18 jours)</p>
-              <div className="mt-4">
-                <Link href="/shopping-list" className="inline-flex items-center gap-1.5 text-xs font-medium text-terra-300 font-body">
-                  Préparer la liste →
-                </Link>
+              <div className="relative">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-lg">✨</span>
+                  <span className="text-sm font-medium font-body text-cream-100">Analyse IA</span>
+                </div>
+                <p className="font-display text-xl font-medium text-cream-50 mb-1">
+                  Découvrez vos habitudes d'achat
+                </p>
+                <p className="text-xs text-cream-100/60 font-body">
+                  Fréquence de commande, produits favoris, suggestions personnalisées
+                </p>
+                <div className="mt-4">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-terra-300 font-body">
+                    Voir l'analyse complète →
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
+          </Link>
         </section>
 
       </div>
