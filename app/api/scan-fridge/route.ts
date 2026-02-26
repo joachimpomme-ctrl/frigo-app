@@ -26,8 +26,9 @@ Format exact :
 Les valeurs de status sont strictement : "ok", "low", "missing".
 Sois précis et exhaustif. Inclus tout ce que tu peux identifier.`
 
+export const maxDuration = 30
+
 export async function POST(req: NextRequest) {
-  // Vérifier l'auth
   const session = await getServerSession(authOptions)
   if (!session) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
@@ -41,12 +42,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Aucune image fournie' }, { status: 400 })
     }
 
-    // Convertir en base64
     const arrayBuffer = await imageFile.arrayBuffer()
     const base64 = Buffer.from(arrayBuffer).toString('base64')
     const mediaType = (imageFile.type as 'image/jpeg' | 'image/png' | 'image/webp') || 'image/jpeg'
 
-    // Appel Claude Vision
     const message = await anthropic.messages.create({
       model: 'claude-opus-4-6',
       max_tokens: 1024,
@@ -77,7 +76,6 @@ export async function POST(req: NextRequest) {
       throw new Error('Réponse invalide de Claude')
     }
 
-    // Parser le JSON
     const cleanJson = textContent.text.replace(/```json\n?|```\n?/g, '').trim()
     const parsed = JSON.parse(cleanJson)
 
@@ -85,7 +83,8 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('Fridge scan error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de l\'analyse', items: [] },
+      { error: "Erreur lors de l'analyse", items: [] },
       { status: 500 }
     )
   }
+}
