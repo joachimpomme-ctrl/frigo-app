@@ -89,11 +89,3 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     )
   }
-}
-
-// Limite de taille des requêtes : 10MB
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-}
