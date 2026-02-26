@@ -206,8 +206,7 @@ export default function FridgePage() {
         accept="image/*"
         multiple
         onChange={handleFileChange}
-        className="hidden"
-        id="fridge-scan"
+        className="sr-only"
       />
       {/* File input for adding more photos */}
       <input
@@ -216,8 +215,7 @@ export default function FridgePage() {
         accept="image/*"
         multiple
         onChange={handleFileChange}
-        className="hidden"
-        id="fridge-add-more"
+        className="sr-only"
       />
 
       <div className="px-5 py-5 space-y-5">
@@ -225,22 +223,23 @@ export default function FridgePage() {
         {/* IDLE */}
         {step === 'idle' && (
           <div className="animate-fade-up space-y-4">
-            <label htmlFor="fridge-scan">
-              <div className="card flex flex-col items-center justify-center py-14 px-8 text-center
-                              border-2 border-dashed border-forest-200 cursor-pointer active:border-forest-400 transition-colors">
-                <div className="w-20 h-20 rounded-3xl bg-forest-100 flex items-center justify-center mb-5">
-                  <span className="text-4xl">📷</span>
-                </div>
-                <h2 className="font-display text-xl text-forest-800 mb-2">Scanner un emplacement</h2>
-                <p className="text-sm text-stone-warm/70 font-body mb-2 max-w-xs">
-                  Prenez une ou plusieurs photos de votre frigo, placard, etc.
-                </p>
-                <p className="text-xs text-stone-warm/50 font-body mb-6 max-w-xs">
-                  Vous pourrez ajouter d'autres photos après l'analyse
-                </p>
-                <span className="btn-primary pointer-events-none">📷 Choisir des photos</span>
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="card flex flex-col items-center justify-center py-14 px-8 text-center
+                              border-2 border-dashed border-forest-200 cursor-pointer active:border-forest-400 transition-colors"
+            >
+              <div className="w-20 h-20 rounded-3xl bg-forest-100 flex items-center justify-center mb-5">
+                <span className="text-4xl">📷</span>
               </div>
-            </label>
+              <h2 className="font-display text-xl text-forest-800 mb-2">Scanner un emplacement</h2>
+              <p className="text-sm text-stone-warm/70 font-body mb-2 max-w-xs">
+                Prenez une ou plusieurs photos de votre frigo, placard, etc.
+              </p>
+              <p className="text-xs text-stone-warm/50 font-body mb-6 max-w-xs">
+                Vous pourrez ajouter d'autres photos après l'analyse
+              </p>
+              <span className="btn-primary pointer-events-none">📷 Choisir des photos</span>
+            </div>
 
             {/* Emplacement */}
             <div className="card px-4 py-4">
@@ -316,8 +315,11 @@ export default function FridgePage() {
             </div>
 
             {/* Bouton ajouter des photos (toujours visible en mode editing) */}
-            <div className="card px-4 py-3.5 border-2 border-dashed border-forest-200">
-              <label htmlFor="fridge-add-more" className="flex items-center gap-3 cursor-pointer">
+            <div
+              onClick={() => addMoreInputRef.current?.click()}
+              className="card px-4 py-3.5 border-2 border-dashed border-forest-200 cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-forest-100 flex items-center justify-center flex-shrink-0">
                   <span className="text-xl">📷</span>
                 </div>
@@ -328,7 +330,7 @@ export default function FridgePage() {
                   </p>
                 </div>
                 <span className="text-forest-400 text-xl">+</span>
-              </label>
+              </div>
             </div>
 
             {/* Stats rapides — cliquables pour filtrer */}
@@ -571,8 +573,11 @@ export default function FridgePage() {
             </div>
 
             {/* Bouton ajouter des photos à l'inventaire */}
-            <div className="card px-4 py-4 border-2 border-dashed border-forest-200">
-              <label htmlFor="fridge-add-more" className="flex items-center gap-3 cursor-pointer">
+            <div
+              onClick={() => addMoreInputRef.current?.click()}
+              className="card px-4 py-4 border-2 border-dashed border-forest-200 cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-xl bg-forest-100 flex items-center justify-center flex-shrink-0">
                   <span className="text-2xl">📷</span>
                 </div>
@@ -583,7 +588,7 @@ export default function FridgePage() {
                   </p>
                 </div>
                 <span className="text-forest-400 text-2xl font-light">+</span>
-              </label>
+              </div>
             </div>
 
             {/* Résumé — cliquable pour filtrer */}
