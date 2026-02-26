@@ -1,15 +1,9 @@
 import { AppHeader } from '@/components/AppHeader'
 import { StockAlertBanner } from '@/components/StockAlertBanner'
+import { DashboardData } from '@/components/DashboardData'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import Link from 'next/link'
-
-const suppliers = [
-  { name: 'Picnic', color: '#FF6B35', emoji: '🛒', connected: true },
-  { name: 'La Fourche', color: '#2d6a2d', emoji: '🌿', connected: false },
-  { name: 'Le Fourgon', color: '#1a3a5c', emoji: '🚐', connected: false },
-  { name: 'Marché', color: '#c0622a', emoji: '🥕', connected: true },
-]
 
 const quickActions = [
   { href: '/fridge', label: 'Scanner le frigo', icon: '📷', description: 'Prendre une photo' },
@@ -53,32 +47,8 @@ export default async function DashboardPage() {
           </div>
         </section>
 
-        {/* Suppliers status */}
-        <section className="animate-fade-up animate-delay-200">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-display text-base text-forest-700 font-medium">Fournisseurs</h2>
-            <span className="text-xs text-stone-warm/60 font-body">2/4 connectés</span>
-          </div>
-          <div className="space-y-2.5">
-            {suppliers.map((s) => (
-              <div key={s.name} className="card px-4 py-3.5 flex items-center gap-3">
-                <div
-                  className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
-                  style={{ backgroundColor: s.color + '18' }}
-                >
-                  {s.emoji}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-forest-800 font-body">{s.name}</p>
-                  <p className="text-xs text-stone-warm/60 font-body">
-                    {s.connected ? 'Synchronisé' : 'Non connecté'}
-                  </p>
-                </div>
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${s.connected ? 'bg-forest-400' : 'bg-cream-200'}`} />
-              </div>
-            ))}
-          </div>
-        </section>
+        {/* Dépenses du mois, jauge de stock et fournisseurs */}
+        <DashboardData />
 
         {/* Analyse IA teaser */}
         <section className="animate-fade-up animate-delay-300">

@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
 
-const SUPPLIERS = ['Tous', 'Picnic', 'La Fourche', 'Le Fourgon', 'Marché']
+const DEFAULT_SUPPLIERS = ['Picnic', 'La Fourche', 'Le Fourgon', 'Marché']
 
 interface ShoppingItem {
   id: string
@@ -37,6 +37,7 @@ export default function ShoppingListPage() {
   const [newName, setNewName]       = useState('')
   const [newQty, setNewQty]         = useState('')
   const [newSupplier, setNewSupplier] = useState('Marché')
+  const [customSupplier, setCustomSupplier] = useState('')
   const [syncing, setSyncing]       = useState<Set<string>>(new Set())
   const [clearing, setClearing]     = useState(false)
   const [toast, setToast]           = useState<string | null>(null)
@@ -86,12 +87,13 @@ export default function ShoppingListPage() {
     const name = newName.trim()
     if (!name) return
 
+    const supplier = newSupplier === 'Autre' ? customSupplier.trim() || 'Autre' : newSupplier
     const tempId = `temp-${Date.now()}`
     const newItem: ShoppingItem = {
       id: tempId,
       name,
       quantity: newQty.trim() || '1',
-      supplier: newSupplier,
+      supplier,
       checked: false,
     }
 
@@ -225,7 +227,7 @@ export default function ShoppingListPage() {
 
                 {/* Supplier filter */}
                 <div className="flex gap-2 overflow-x-auto pb-1 -mx-5 px-5 scrollbar-hide animate-fade-up animate-delay-100">
-                  {SUPPLIERS.filter(s => s === 'Tous' || activeSuppliers.includes(s)).map(s => (
+                  {['Tous', ...activeSuppliers].map(s => (
                     <button
                       key={s}
                       onClick={() => setFilter(s)}
@@ -323,13 +325,23 @@ export default function ShoppingListPage() {
                   <select
                     className="input text-sm w-32"
                     value={newSupplier}
-                    onChange={e => setNewSupplier(e.target.value)}
+                    onChange={e => { setNewSupplier(e.target.value); if (e.target.value !== 'Autre') setCustomSupplier('') }}
                   >
-                    {SUPPLIERS.filter(s => s !== 'Tous').map(s => (
+                    {DEFAULT_SUPPLIERS.map(s => (
                       <option key={s} value={s}>{supplierEmoji[s] || ''} {s}</option>
                     ))}
+                    <option value="Autre">+ Autre</option>
                   </select>
                 </div>
+                {newSupplier === 'Autre' && (
+                  <input
+                    className="input text-sm"
+                    placeholder="Nom du fournisseur"
+                    value={customSupplier}
+                    onChange={e => setCustomSupplier(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addItem()}
+                  />
+                )}
                 <div className="flex gap-2">
                   <button onClick={() => { setShowAdd(false); setNewName(''); setNewQty('') }} className="btn-secondary flex-1">
                     Annuler

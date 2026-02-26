@@ -179,7 +179,6 @@ export default function FridgePage() {
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         onChange={handleFileChange}
         className="hidden"
         id="fridge-scan"
@@ -198,9 +197,9 @@ export default function FridgePage() {
                 </div>
                 <h2 className="font-display text-xl text-forest-800 mb-2">Scanner un emplacement</h2>
                 <p className="text-sm text-stone-warm/70 font-body mb-6 max-w-xs">
-                  Photographiez votre frigo, placard ou congélateur
+                  Prenez une photo ou choisissez depuis votre galerie
                 </p>
-                <span className="btn-primary pointer-events-none">📷 Prendre une photo</span>
+                <span className="btn-primary pointer-events-none">📷 Photo ou galerie</span>
               </div>
             </label>
 

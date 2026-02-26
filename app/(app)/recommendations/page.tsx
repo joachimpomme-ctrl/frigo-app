@@ -255,68 +255,91 @@ export default function RecommendationsPage() {
                 const supplierConf = SUPPLIER_CONFIG[rec.supplier]
 
                 return (
-                  <button
+                  <div
                     key={rec.id}
-                    onClick={() => toggleSelect(rec.id)}
                     className={cn(
-                      'card w-full text-left border px-4 py-3.5 transition-all active:scale-[0.98]',
+                      'card w-full text-left border px-4 py-3.5 transition-all relative',
                       isSelected ? 'border-forest-400 bg-forest-50/30' : conf.border,
                     )}
                     style={{ animationDelay: `${i * 30}ms` }}
                   >
-                    <div className="flex items-start gap-3">
-                      {/* Checkbox */}
-                      <div className={cn(
-                        'w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center transition-all',
-                        isSelected ? 'bg-forest-600 border-forest-600' : 'border-forest-300'
-                      )}>
-                        {isSelected && (
-                          <svg width="10" height="8" fill="none" viewBox="0 0 10 8">
-                            <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        )}
-                      </div>
+                    {/* Bouton supprimer */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setRecs(prev => prev.filter(r => r.id !== rec.id))
+                        setCounts(prev => ({
+                          ...prev,
+                          [rec.urgency]: prev[rec.urgency] - 1,
+                          total: prev.total - 1,
+                        }))
+                        setSelected(prev => { const n = new Set(prev); n.delete(rec.id); return n })
+                      }}
+                      className="absolute top-2 right-2 w-6 h-6 rounded-full bg-cream-100 flex items-center justify-center text-stone-warm/40 active:bg-red-50 active:text-red-400 transition-colors z-10"
+                    >
+                      <svg width="10" height="10" fill="none" viewBox="0 0 10 10">
+                        <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                    </button>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2 mb-0.5">
-                          <p className="text-sm font-medium text-forest-800 font-body truncate">{rec.name}</p>
-                          <span className={cn(
-                            'text-[10px] px-2 py-0.5 rounded-full font-medium font-body flex-shrink-0',
-                            conf.bg, conf.color,
-                          )}>
-                            {conf.label}
-                          </span>
-                        </div>
-
-                        <p className="text-xs text-stone-warm/70 font-body leading-relaxed">
-                          {rec.reason}
-                        </p>
-
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <span className="text-[10px] text-stone-warm/40 font-body">
-                            {SOURCE_LABELS[rec.source] || rec.source}
-                          </span>
-                          {rec.supplier && (
-                            <>
-                              <span className="text-stone-warm/20">·</span>
-                              <span className="text-[10px] font-body flex items-center gap-1">
-                                {supplierConf && <span>{supplierConf.emoji}</span>}
-                                <span className="text-stone-warm/50">{rec.supplier}</span>
-                              </span>
-                            </>
-                          )}
-                          {rec.suggestedQuantity && rec.suggestedQuantity !== '1' && (
-                            <>
-                              <span className="text-stone-warm/20">·</span>
-                              <span className="text-[10px] text-stone-warm/50 font-body">
-                                Qté: {rec.suggestedQuantity}
-                              </span>
-                            </>
+                    <button
+                      onClick={() => toggleSelect(rec.id)}
+                      className="w-full text-left active:scale-[0.98] transition-transform"
+                    >
+                      <div className="flex items-start gap-3 pr-6">
+                        {/* Checkbox */}
+                        <div className={cn(
+                          'w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center transition-all',
+                          isSelected ? 'bg-forest-600 border-forest-600' : 'border-forest-300'
+                        )}>
+                          {isSelected && (
+                            <svg width="10" height="8" fill="none" viewBox="0 0 10 8">
+                              <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
                           )}
                         </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 mb-0.5">
+                            <p className="text-sm font-medium text-forest-800 font-body truncate">{rec.name}</p>
+                            <span className={cn(
+                              'text-[10px] px-2 py-0.5 rounded-full font-medium font-body flex-shrink-0',
+                              conf.bg, conf.color,
+                            )}>
+                              {conf.label}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-stone-warm/70 font-body leading-relaxed">
+                            {rec.reason}
+                          </p>
+
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <span className="text-[10px] text-stone-warm/40 font-body">
+                              {SOURCE_LABELS[rec.source] || rec.source}
+                            </span>
+                            {rec.supplier && (
+                              <>
+                                <span className="text-stone-warm/20">·</span>
+                                <span className="text-[10px] font-body flex items-center gap-1">
+                                  {supplierConf && <span>{supplierConf.emoji}</span>}
+                                  <span className="text-stone-warm/50">{rec.supplier}</span>
+                                </span>
+                              </>
+                            )}
+                            {rec.suggestedQuantity && rec.suggestedQuantity !== '1' && (
+                              <>
+                                <span className="text-stone-warm/20">·</span>
+                                <span className="text-[10px] text-stone-warm/50 font-body">
+                                  Qté: {rec.suggestedQuantity}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </button>
+                    </button>
+                  </div>
                 )
               })}
             </div>
