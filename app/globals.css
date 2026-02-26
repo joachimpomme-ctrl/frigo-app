@@ -1,0 +1,157 @@
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Palette organique */
+  --cream-50: #fdfaf4;
+  --cream-100: #faf4e4;
+  --cream-200: #f4e8c9;
+  --forest-600: #2d6a2d;
+  --forest-700: #1e4d1e;
+  --forest-800: #163816;
+  --terra-300: #d9956a;
+  --terra-500: #c0622a;
+  --stone: #8c7b6b;
+
+  /* Fonts */
+  --font-display: 'Lora', serif;
+  --font-body: 'DM Sans', sans-serif;
+
+  /* Radius */
+  --radius-card: 1.25rem;
+  --radius-button: 0.75rem;
+
+  /* Shadows */
+  --shadow-card: 0 4px 32px rgba(22, 56, 22, 0.08);
+  --shadow-elevated: 0 8px 48px rgba(22, 56, 22, 0.14);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--cream-50);
+  color: var(--forest-800);
+  min-height: 100svh;
+  overscroll-behavior: none;
+}
+
+/* ============================================
+   Typography
+   ============================================ */
+.font-display { font-family: var(--font-display); }
+
+/* ============================================
+   Animations
+   ============================================ */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.animate-fade-up   { animation: fadeUp 0.5s ease both; }
+.animate-fade-in   { animation: fadeIn 0.4s ease both; }
+.animate-scale-in  { animation: scaleIn 0.3s ease both; }
+
+.animate-delay-100 { animation-delay: 0.1s; }
+.animate-delay-200 { animation-delay: 0.2s; }
+.animate-delay-300 { animation-delay: 0.3s; }
+.animate-delay-400 { animation-delay: 0.4s; }
+
+/* Skeleton loading */
+.skeleton {
+  background: linear-gradient(90deg, var(--cream-100) 25%, var(--cream-200) 50%, var(--cream-100) 75%);
+  background-size: 400px 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 0.5rem;
+}
+
+/* ============================================
+   Cards & Surfaces
+   ============================================ */
+.card {
+  background: white;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  border: 1px solid rgba(212, 232, 212, 0.4);
+}
+
+.card-elevated {
+  background: white;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-elevated);
+}
+
+/* ============================================
+   Buttons
+   ============================================ */
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 px-6 py-3.5
+         bg-forest-700 text-cream-50 font-body font-medium text-sm
+         rounded-xl active:scale-95 transition-all duration-150
+         shadow-sm hover:bg-forest-800;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center gap-2 px-6 py-3.5
+         bg-cream-100 text-forest-700 font-body font-medium text-sm
+         rounded-xl active:scale-95 transition-all duration-150
+         border border-forest-100 hover:bg-cream-200;
+}
+
+.btn-terra {
+  @apply inline-flex items-center justify-center gap-2 px-6 py-3.5
+         bg-terra-500 text-cream-50 font-body font-medium text-sm
+         rounded-xl active:scale-95 transition-all duration-150
+         shadow-sm hover:bg-terra-700;
+}
+
+/* ============================================
+   Mobile bottom nav safe area
+   ============================================ */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ============================================
+   Scrollbar subtle
+   ============================================ */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--cream-200); border-radius: 4px; }
+
+/* ============================================
+   Input styles
+   ============================================ */
+.input {
+  @apply w-full px-4 py-3.5 rounded-xl border border-forest-100
+         bg-cream-50 text-forest-800 font-body text-sm
+         placeholder:text-stone-warm/60
+         focus:outline-none focus:ring-2 focus:ring-forest-400/40
+         focus:border-forest-400 transition-all;
+}
