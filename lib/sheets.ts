@@ -3,10 +3,19 @@ import { google } from 'googleapis'
 const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID!
 
 function getAuth() {
+  const rawKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY || ''
+  
+  // Nettoyer la clé quelle que soit la façon dont elle a été stockée
+  const privateKey = rawKey
+    .replace(/\\n/g, '\n')        // remplace les \n littéraux
+    .replace(/\r\n/g, '\n')       // normalise Windows
+    .replace(/\r/g, '\n')         // normalise vieux Mac
+    .trim()
+
   return new google.auth.GoogleAuth({
     credentials: {
       client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-private_key: (process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '').replace(/\\n/g, '\n').replace(/\n/g, '\n'),
+      private_key: privateKey,
     },
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   })
