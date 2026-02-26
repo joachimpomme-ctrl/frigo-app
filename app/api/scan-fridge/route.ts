@@ -6,26 +6,28 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 })
 
-const SYSTEM_PROMPT = `Tu es un assistant spécialisé dans l'analyse de réfrigérateurs.
-Quand tu reçois une photo d'un réfrigérateur, tu dois :
-1. Identifier tous les aliments visibles
+const SYSTEM_PROMPT = `Tu es un assistant spécialisé dans l'analyse de réfrigérateurs et placards.
+Quand tu reçois une ou plusieurs photos, tu dois :
+1. Identifier tous les aliments visibles sur TOUTES les photos
 2. Estimer leur quantité/niveau
 3. Indiquer si le stock est OK, bas (moins d'1 portion) ou manquant
+4. Attribuer une catégorie à chaque produit
 
 Réponds UNIQUEMENT avec un JSON valide, sans markdown, sans explication.
 Format exact :
 {
   "items": [
-    {"name": "Lait", "quantity": "1 litre environ", "status": "ok"},
-    {"name": "Beurre", "quantity": "presque terminé", "status": "low"},
-    {"name": "Yaourts", "quantity": "non visible", "status": "missing"}
+    {"name": "Lait", "quantity": "1 litre environ", "status": "ok", "category": "Laitage"},
+    {"name": "Beurre", "quantity": "presque terminé", "status": "low", "category": "Laitage"},
+    {"name": "Yaourts", "quantity": "non visible", "status": "missing", "category": "Laitage"}
   ]
 }
 
 Les valeurs de status sont strictement : "ok", "low", "missing".
-Sois précis et exhaustif. Inclus tout ce que tu peux identifier.`
+Les catégories possibles sont : "Fruits", "Légumes", "Viande", "Poisson", "Laitage", "Épicerie", "Boissons", "Surgelés", "Hygiène", "Autre".
+Sois précis et exhaustif. Inclus tout ce que tu peux identifier sur toutes les photos.`
 
-export const maxDuration = 30
+export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -35,37 +37,47 @@ export async function POST(req: NextRequest) {
 
   try {
     const formData = await req.formData()
-    const imageFile = formData.get('image') as File
 
-    if (!imageFile) {
+    // Support multiple images
+    const imageFiles = formData.getAll('image') as File[]
+
+    if (!imageFiles || imageFiles.length === 0) {
       return NextResponse.json({ error: 'Aucune image fournie' }, { status: 400 })
     }
 
-    const arrayBuffer = await imageFile.arrayBuffer()
-    const base64 = Buffer.from(arrayBuffer).toString('base64')
-    const mediaType = (imageFile.type as 'image/jpeg' | 'image/png' | 'image/webp') || 'image/jpeg'
+    // Build content blocks for all images
+    const contentBlocks: Anthropic.MessageCreateParams['messages'][0]['content'] = []
+
+    for (const imageFile of imageFiles) {
+      const arrayBuffer = await imageFile.arrayBuffer()
+      const base64 = Buffer.from(arrayBuffer).toString('base64')
+      const mediaType = (imageFile.type as 'image/jpeg' | 'image/png' | 'image/webp') || 'image/jpeg'
+
+      contentBlocks.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: mediaType,
+          data: base64,
+        },
+      })
+    }
+
+    contentBlocks.push({
+      type: 'text',
+      text: imageFiles.length > 1
+        ? `Analyse le contenu de ces ${imageFiles.length} photos (frigo, placard, etc.). Liste tous les produits visibles sur l'ensemble des photos.`
+        : 'Analyse le contenu de ce réfrigérateur.',
+    })
 
     const message = await anthropic.messages.create({
       model: 'claude-opus-4-6',
-      max_tokens: 1024,
+      max_tokens: 2048,
       system: SYSTEM_PROMPT,
       messages: [
         {
           role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: mediaType,
-                data: base64,
-              },
-            },
-            {
-              type: 'text',
-              text: 'Analyse le contenu de ce réfrigérateur.',
-            },
-          ],
+          content: contentBlocks,
         },
       ],
     })

@@ -14,12 +14,13 @@ interface StockItem {
   status: 'ok' | 'low' | 'missing'
   location: string
   source: 'scan' | 'manual'
+  category: string
 }
 
 const STATUS_CONFIG = {
-  ok:      { label: 'OK',        color: 'text-forest-600', bg: 'bg-forest-100',  dot: 'bg-forest-400',  border: 'border-forest-200' },
-  low:     { label: 'Stock bas', color: 'text-terra-500',  bg: 'bg-terra-100',   dot: 'bg-terra-300',   border: 'border-terra-200'  },
-  missing: { label: 'Manquant',  color: 'text-red-500',    bg: 'bg-red-50',      dot: 'bg-red-400',     border: 'border-red-200'    },
+  ok:      { label: 'OK',        color: 'text-forest-600', bg: 'bg-forest-100',  dot: 'bg-forest-400',  border: 'border-forest-200', activeBg: 'bg-forest-200' },
+  low:     { label: 'Stock bas', color: 'text-terra-500',  bg: 'bg-terra-100',   dot: 'bg-terra-300',   border: 'border-terra-200',  activeBg: 'bg-terra-200'  },
+  missing: { label: 'Manquant',  color: 'text-red-500',    bg: 'bg-red-50',      dot: 'bg-red-400',     border: 'border-red-200',    activeBg: 'bg-red-100'    },
 }
 
 const LOCATIONS = [
@@ -43,20 +44,27 @@ export default function FridgePage() {
   const [error, setError]         = useState<string | null>(null)
   const [showAddManual, setShowAddManual] = useState(false)
   const [newItem, setNewItem]     = useState({ name: '', quantity: '', unit: '' })
+  const [statusFilter, setStatusFilter] = useState<'ok' | 'low' | 'missing' | null>(null)
+  const [photoCount, setPhotoCount] = useState(0)
   const fileInputRef              = useRef<HTMLInputElement>(null)
+  const addMoreInputRef           = useRef<HTMLInputElement>(null)
 
-  // --- Scan photo ---
+  // --- Scan photos (multiple) ---
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (fileInputRef.current) fileInputRef.current.value = ''
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    if (e.target === fileInputRef.current && fileInputRef.current) fileInputRef.current.value = ''
+    if (e.target === addMoreInputRef.current && addMoreInputRef.current) addMoreInputRef.current.value = ''
 
     setStep('analyzing')
     setError(null)
+    setPhotoCount(prev => prev + files.length)
 
     try {
       const formData = new FormData()
-      formData.append('image', file)
+      for (let i = 0; i < files.length; i++) {
+        formData.append('image', files[i])
+      }
 
       const res = await fetch('/api/scan-fridge', { method: 'POST', body: formData })
       if (!res.ok) throw new Error('Erreur serveur')
@@ -70,13 +78,12 @@ export default function FridgePage() {
         status:   item.status || 'ok',
         location,
         source:   'scan',
+        category: item.category || 'Autre',
       }))
 
       setItems(prev => {
-        // Fusionner avec les items existants (éviter doublons par nom)
         const existingNames = prev.map(i => i.name.toLowerCase())
         const toAdd = newItems.filter(i => !existingNames.includes(i.name.toLowerCase()))
-        // Mettre à jour les existants si trouvés
         const updated = prev.map(p => {
           const match = newItems.find(n => n.name.toLowerCase() === p.name.toLowerCase())
           return match ? { ...p, quantity: match.quantity, status: match.status } : p
@@ -121,6 +128,7 @@ export default function FridgePage() {
       status:   'ok',
       location,
       source:   'manual',
+      category: 'Autre',
     }])
     setNewItem({ name: '', quantity: '', unit: '' })
     setShowAddManual(false)
@@ -160,6 +168,14 @@ export default function FridgePage() {
     setLabel('')
     setError(null)
     setShowAddManual(false)
+    setStatusFilter(null)
+    setPhotoCount(0)
+  }
+
+  // Go back to editing from saved (keep items)
+  const continueEditing = () => {
+    setStep('editing')
+    setStatusFilter(null)
   }
 
   const counts = {
@@ -168,20 +184,40 @@ export default function FridgePage() {
     missing: items.filter(i => i.status === 'missing').length,
   }
 
+  // Filtered items for display
+  const displayItems = statusFilter ? items.filter(i => i.status === statusFilter) : items
+
+  // Toggle status filter
+  const toggleStatusFilter = (s: 'ok' | 'low' | 'missing') => {
+    setStatusFilter(prev => prev === s ? null : s)
+  }
+
   return (
     <>
       <AppHeader
         title="Inventaire"
-        subtitle={items.length > 0 ? `${items.length} produits` : 'Scanner & gérer vos stocks'}
+        subtitle={items.length > 0 ? `${items.length} produits${photoCount > 0 ? ` · ${photoCount} photo${photoCount > 1 ? 's' : ''}` : ''}` : 'Scanner & gérer vos stocks'}
       />
 
+      {/* File input for initial scan (multiple) */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         onChange={handleFileChange}
         className="hidden"
         id="fridge-scan"
+      />
+      {/* File input for adding more photos */}
+      <input
+        ref={addMoreInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={handleFileChange}
+        className="hidden"
+        id="fridge-add-more"
       />
 
       <div className="px-5 py-5 space-y-5">
@@ -196,10 +232,13 @@ export default function FridgePage() {
                   <span className="text-4xl">📷</span>
                 </div>
                 <h2 className="font-display text-xl text-forest-800 mb-2">Scanner un emplacement</h2>
-                <p className="text-sm text-stone-warm/70 font-body mb-6 max-w-xs">
-                  Prenez une photo ou choisissez depuis votre galerie
+                <p className="text-sm text-stone-warm/70 font-body mb-2 max-w-xs">
+                  Prenez une ou plusieurs photos de votre frigo, placard, etc.
                 </p>
-                <span className="btn-primary pointer-events-none">📷 Photo ou galerie</span>
+                <p className="text-xs text-stone-warm/50 font-body mb-6 max-w-xs">
+                  Vous pourrez ajouter d'autres photos après l'analyse
+                </p>
+                <span className="btn-primary pointer-events-none">📷 Choisir des photos</span>
               </div>
             </label>
 
@@ -241,7 +280,14 @@ export default function FridgePage() {
           <div className="flex flex-col items-center justify-center py-24 animate-fade-in">
             <div className="w-16 h-16 border-[3px] border-forest-200 border-t-forest-700 rounded-full animate-spin mb-6" />
             <p className="font-display text-lg text-forest-800 mb-1">Analyse en cours…</p>
-            <p className="text-sm text-stone-warm/60 font-body">Claude identifie vos produits</p>
+            <p className="text-sm text-stone-warm/60 font-body">
+              Claude identifie vos produits{photoCount > 1 ? ` (${photoCount} photos)` : ''}
+            </p>
+            {items.length > 0 && (
+              <p className="text-xs text-stone-warm/40 font-body mt-2">
+                {items.length} produits déjà dans l'inventaire
+              </p>
+            )}
           </div>
         )}
 
@@ -269,15 +315,51 @@ export default function FridgePage() {
               />
             </div>
 
-            {/* Stats rapides */}
+            {/* Bouton ajouter des photos (toujours visible en mode editing) */}
+            <div className="card px-4 py-3.5 border-2 border-dashed border-forest-200">
+              <label htmlFor="fridge-add-more" className="flex items-center gap-3 cursor-pointer">
+                <div className="w-10 h-10 rounded-xl bg-forest-100 flex items-center justify-center flex-shrink-0">
+                  <span className="text-xl">📷</span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-forest-800 font-body">Ajouter des photos</p>
+                  <p className="text-xs text-stone-warm/60 font-body">
+                    Scannez un autre emplacement (placard, congélateur…)
+                  </p>
+                </div>
+                <span className="text-forest-400 text-xl">+</span>
+              </label>
+            </div>
+
+            {/* Stats rapides — cliquables pour filtrer */}
             {items.length > 0 && (
               <div className="grid grid-cols-3 gap-2">
                 {(['ok', 'low', 'missing'] as const).map(s => (
-                  <div key={s} className={cn('rounded-xl px-3 py-2.5 text-center', STATUS_CONFIG[s].bg)}>
+                  <button
+                    key={s}
+                    onClick={() => toggleStatusFilter(s)}
+                    className={cn(
+                      'rounded-xl px-3 py-2.5 text-center transition-all active:scale-95',
+                      statusFilter === s
+                        ? cn(STATUS_CONFIG[s].activeBg, 'ring-2 ring-offset-1', s === 'ok' ? 'ring-forest-400' : s === 'low' ? 'ring-terra-300' : 'ring-red-400')
+                        : STATUS_CONFIG[s].bg,
+                    )}
+                  >
                     <p className={cn('font-display text-xl font-medium', STATUS_CONFIG[s].color)}>{counts[s]}</p>
                     <p className={cn('text-[10px] font-body', STATUS_CONFIG[s].color)}>{STATUS_CONFIG[s].label}</p>
-                  </div>
+                  </button>
                 ))}
+              </div>
+            )}
+
+            {statusFilter && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-stone-warm/50 font-body">
+                  Filtre : {STATUS_CONFIG[statusFilter].label}
+                </span>
+                <button onClick={() => setStatusFilter(null)} className="text-xs text-forest-600 font-body font-medium underline">
+                  Tout afficher
+                </button>
               </div>
             )}
 
@@ -285,10 +367,10 @@ export default function FridgePage() {
             {items.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-medium text-stone-warm/50 uppercase tracking-wider font-body">
-                  {items.length} produits — appuyez pour modifier
+                  {statusFilter ? `${displayItems.length} / ${items.length} produits` : `${items.length} produits`} — appuyez pour modifier
                 </p>
 
-                {items.map(item => (
+                {displayItems.map(item => (
                   <div key={item.id}>
                     {/* Item row */}
                     <div
@@ -445,14 +527,9 @@ export default function FridgePage() {
                 </div>
               </div>
             ) : (
-              <div className="flex gap-3">
-                <button onClick={() => setShowAddManual(true)} className="btn-secondary flex-1">
-                  ✏️ Ajouter manuellement
-                </button>
-                <label htmlFor="fridge-scan" className="btn-secondary flex-1 cursor-pointer text-center">
-                  📷 Autre photo
-                </label>
-              </div>
+              <button onClick={() => setShowAddManual(true)} className="btn-secondary w-full">
+                ✏️ Ajouter un produit manuellement
+              </button>
             )}
 
             {/* Actions finales */}
@@ -493,17 +570,69 @@ export default function FridgePage() {
               </div>
             </div>
 
-            {/* Résumé */}
+            {/* Bouton ajouter des photos à l'inventaire */}
+            <div className="card px-4 py-4 border-2 border-dashed border-forest-200">
+              <label htmlFor="fridge-add-more" className="flex items-center gap-3 cursor-pointer">
+                <div className="w-12 h-12 rounded-xl bg-forest-100 flex items-center justify-center flex-shrink-0">
+                  <span className="text-2xl">📷</span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-forest-800 font-body">Ajouter d'autres photos</p>
+                  <p className="text-xs text-stone-warm/60 font-body">
+                    Scannez un placard, congélateur… Les nouveaux produits seront ajoutés à cet inventaire
+                  </p>
+                </div>
+                <span className="text-forest-400 text-2xl font-light">+</span>
+              </label>
+            </div>
+
+            {/* Résumé — cliquable pour filtrer */}
             <div className="grid grid-cols-3 gap-2">
               {(['ok', 'low', 'missing'] as const).map(s => (
-                <div key={s} className={cn('rounded-xl px-3 py-3 text-center', STATUS_CONFIG[s].bg)}>
+                <button
+                  key={s}
+                  onClick={() => toggleStatusFilter(s)}
+                  className={cn(
+                    'rounded-xl px-3 py-3 text-center transition-all active:scale-95',
+                    statusFilter === s
+                      ? cn(STATUS_CONFIG[s].activeBg, 'ring-2 ring-offset-1', s === 'ok' ? 'ring-forest-400' : s === 'low' ? 'ring-terra-300' : 'ring-red-400')
+                      : STATUS_CONFIG[s].bg,
+                  )}
+                >
                   <p className={cn('font-display text-2xl font-medium', STATUS_CONFIG[s].color)}>{counts[s]}</p>
                   <p className={cn('text-[10px] font-body', STATUS_CONFIG[s].color)}>{STATUS_CONFIG[s].label}</p>
-                </div>
+                </button>
               ))}
             </div>
 
-            {counts.low + counts.missing > 0 && (
+            {statusFilter && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-stone-warm/50 font-body">
+                  Filtre : {STATUS_CONFIG[statusFilter].label} ({displayItems.length} produits)
+                </span>
+                <button onClick={() => setStatusFilter(null)} className="text-xs text-forest-600 font-body font-medium underline">
+                  Tout afficher
+                </button>
+              </div>
+            )}
+
+            {/* Liste filtrée des produits */}
+            {displayItems.length > 0 && (
+              <div className="space-y-1.5">
+                {displayItems.map(i => (
+                  <div key={i.id} className={cn('flex items-center gap-3 px-4 py-2.5 rounded-xl', STATUS_CONFIG[i.status].bg)}>
+                    <div className={cn('w-2 h-2 rounded-full flex-shrink-0', STATUS_CONFIG[i.status].dot)} />
+                    <span className="text-sm text-forest-800 font-body flex-1">{i.name}</span>
+                    <span className="text-xs text-stone-warm/60 font-body">{i.quantity} {i.unit}</span>
+                    {i.location && (
+                      <span className="text-xs text-stone-warm/40">{LOCATIONS.find(l => l.id === i.location)?.emoji}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {counts.low + counts.missing > 0 && !statusFilter && (
               <div className="card px-4 py-4 border-l-4 border-l-terra-300">
                 <p className="text-sm font-medium text-forest-800 font-body mb-1">
                   {counts.low + counts.missing} produits à réapprovisionner
@@ -520,8 +649,17 @@ export default function FridgePage() {
             )}
 
             <div className="flex gap-3">
+              <button onClick={continueEditing} className="btn-secondary flex-1">
+                ✏️ Modifier l'inventaire
+              </button>
+              <button onClick={handleSave} className="btn-primary flex-1">
+                💾 Re-sauvegarder
+              </button>
+            </div>
+
+            <div className="flex gap-3">
               <button onClick={reset} className="btn-secondary flex-1">
-                📷 Nouvel inventaire
+                🆕 Nouvel inventaire
               </button>
               <a href="/shopping-list" className="btn-primary flex-1 text-center">
                 🛍️ Voir les courses

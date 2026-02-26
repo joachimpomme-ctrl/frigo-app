@@ -1,7 +1,7 @@
 'use client'
 
 import { AppHeader } from '@/components/AppHeader'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
@@ -13,6 +13,7 @@ interface Product {
   quantity: string
   unit: string
   price: string
+  category?: string
 }
 
 interface Order {
@@ -57,7 +58,43 @@ function formatShortDate(dateStr: string) {
   } catch { return dateStr }
 }
 
-type ViewMode = 'date' | 'product'
+// --- Catégorisation des produits ---
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  'Fruits':    ['pomme', 'banane', 'orange', 'fraise', 'raisin', 'poire', 'cerise', 'mangue', 'ananas', 'kiwi', 'citron', 'melon', 'pastèque', 'abricot', 'pêche', 'prune', 'fruit', 'clémentine', 'mandarine', 'grenade', 'figue', 'myrtille', 'framboise', 'mûre', 'cassis', 'nectarine', 'pamplemousse', 'avocat', 'litchi', 'datte', 'groseille', 'compote'],
+  'Légumes':   ['tomate', 'carotte', 'courgette', 'aubergine', 'poivron', 'salade', 'concombre', 'oignon', 'ail', 'pomme de terre', 'haricot vert', 'petit pois', 'brocoli', 'chou', 'épinard', 'radis', 'navet', 'poireau', 'céleri', 'artichaut', 'champignon', 'légume', 'betterave', 'fenouil', 'endive', 'mâche', 'roquette', 'asperge', 'laitue', 'patate', 'courge', 'potiron', 'butternut', 'mais', 'maïs', 'haricot'],
+  'Viande':    ['poulet', 'boeuf', 'bœuf', 'porc', 'veau', 'agneau', 'dinde', 'canard', 'saucisse', 'steak', 'filet', 'escalope', 'jambon', 'viande', 'lard', 'bacon', 'merguez', 'chipolata', 'côte', 'rôti', 'hachis', 'haché', 'nugget', 'cordon bleu', 'pâté', 'rillettes', 'charcuterie', 'chorizo', 'salami', 'coppa', 'bresaola', 'magret', 'cuisse'],
+  'Poisson':   ['saumon', 'thon', 'cabillaud', 'crevette', 'moule', 'poisson', 'sardine', 'truite', 'bar', 'dorade', 'colin', 'lieu', 'merlu', 'sole', 'surimi', 'crabe', 'homard', 'huître', 'anchois', 'maquereau', 'hareng'],
+  'Laitage':   ['lait', 'fromage', 'yaourt', 'yogourt', 'beurre', 'crème', 'camembert', 'comté', 'gruyère', 'mozzarella', 'parmesan', 'emmental', 'chèvre', 'raclette', 'mascarpone', 'ricotta', 'feta', 'roquefort', 'reblochon', 'brie', 'coulommiers', 'cheddar', 'gouda', 'edam', 'beaufort', 'cantal', 'tomme', 'pecorino', 'petit-suisse', 'faisselle', 'skyr', 'kéfir', 'cottage', 'philadelphia', 'kiri', 'vache qui rit', 'babybel'],
+  'Épicerie':  ['pâtes', 'riz', 'farine', 'sucre', 'sel', 'huile', 'vinaigre', 'sauce', 'moutarde', 'ketchup', 'conserve', 'céréale', 'biscuit', 'chocolat', 'confiture', 'miel', 'café', 'thé', 'pain', 'épice', 'spaghetti', 'tagliatelle', 'penne', 'fusilli', 'macaroni', 'coquillette', 'nouille', 'semoule', 'quinoa', 'boulgour', 'lentille', 'pois chiche', 'noix', 'amande', 'noisette', 'olive', 'câpre', 'cornichon', 'levure', 'chapelure', 'bouillon', 'coulis', 'pesto', 'curry', 'cumin', 'paprika', 'poivre', 'curcuma', 'cannelle', 'muscade', 'gingembre', 'basilic', 'thym', 'romarin', 'origan', 'persil', 'ciboulette', 'aneth', 'coriandre', 'toast', 'cracker', 'galette', 'wrap', 'tortilla', 'pain de mie', 'brioche', 'croissant', 'cookie', 'gâteau', 'tablette'],
+  'Boissons':  ['eau', 'jus', 'soda', 'bière', 'vin', 'coca', 'limonade', 'sirop', 'smoothie', 'boisson', 'sprite', 'fanta', 'perrier', 'badoit', 'evian', 'volvic', 'schweppes', 'orangina', 'oasis', 'ice tea', 'thé glacé', 'cidre', 'champagne', 'prosecco', 'whisky', 'vodka', 'rhum'],
+  'Surgelés':  ['surgelé', 'glacé', 'glace', 'sorbet', 'pizza surgelée', 'congelé', 'frozen'],
+  'Hygiène':   ['savon', 'shampo', 'dentifrice', 'papier', 'lessive', 'éponge', 'nettoyant', 'hygiène', 'sopalin', 'essuie', 'mouchoir', 'sac poubelle', 'liquide vaisselle', 'javel', 'déodorant', 'gel douche', 'brosse', 'coton'],
+}
+
+const CATEGORY_CONFIG: Record<string, { emoji: string; color: string; bg: string }> = {
+  'Fruits':    { emoji: '🍎', color: '#c0392b', bg: '#fdecea' },
+  'Légumes':   { emoji: '🥬', color: '#27ae60', bg: '#eafaf1' },
+  'Viande':    { emoji: '🥩', color: '#a93226', bg: '#f9ebea' },
+  'Poisson':   { emoji: '🐟', color: '#2980b9', bg: '#ebf5fb' },
+  'Laitage':   { emoji: '🧀', color: '#f39c12', bg: '#fef9e7' },
+  'Épicerie':  { emoji: '🫙', color: '#8e6e53', bg: '#f5f0ec' },
+  'Boissons':  { emoji: '🥤', color: '#2471a3', bg: '#eaf2f8' },
+  'Surgelés':  { emoji: '🧊', color: '#5dade2', bg: '#eaf2fa' },
+  'Hygiène':   { emoji: '🧴', color: '#7d3c98', bg: '#f4ecf7' },
+  'Autre':     { emoji: '📦', color: '#8c7b6b', bg: '#f5f0ec' },
+}
+
+function classifyProduct(name: string): string {
+  const lower = name.toLowerCase()
+  for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+    for (const kw of keywords) {
+      if (lower.includes(kw)) return category
+    }
+  }
+  return 'Autre'
+}
+
+type ViewMode = 'date' | 'product' | 'category'
 
 export default function HistoryPage() {
   const searchParams = useSearchParams()
@@ -75,6 +112,7 @@ export default function HistoryPage() {
   const [deleting, setDeleting]           = useState<string | null>(null)
   const [toast, setToast]                 = useState<string | null>(null)
   const [expandedProduct, setExpandedProduct] = useState<string | null>(null)
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/orders')
@@ -123,6 +161,21 @@ export default function HistoryPage() {
     }
   }
 
+  // Calcul du total à partir des produits (fallback si order.total est vide)
+  const getOrderTotal = (order: Order): string => {
+    if (order.total && order.total.trim() !== '' && order.total !== '0' && order.total !== '0.00') {
+      return order.total
+    }
+    // Fallback : calculer depuis les produits
+    const products = productsByOrder[order.id] || []
+    if (products.length === 0) return '—'
+    const total = products.reduce((sum, p) => {
+      const price = parseFloat(p.price?.replace(/[^0-9.,]/g, '').replace(',', '.') || '0')
+      return sum + (isNaN(price) ? 0 : price)
+    }, 0)
+    return total > 0 ? `${total.toFixed(2)} €` : '—'
+  }
+
   const suppliers = ['Tous', ...Array.from(new Set(orders.map(o => o.supplier))).filter(Boolean)]
 
   const filtered = orders.filter(o => {
@@ -152,7 +205,7 @@ export default function HistoryPage() {
   }
 
   // Vue par produit
-  const productGroups = (() => {
+  const productGroups = useMemo(() => {
     const fp = allProducts.filter(p => {
       const matchFilter = filter === 'Tous' || p.supplier === filter
       const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase())
@@ -163,11 +216,29 @@ export default function HistoryPage() {
       const key = p.name.toLowerCase().trim()
       if (!groups[key]) groups[key] = { name: p.name, purchases: [], totalSpend: 0 }
       groups[key].purchases.push(p)
-      const price = parseFloat(p.price?.replace(/[^0-9.]/g, '') || '0')
+      const price = parseFloat(p.price?.replace(/[^0-9.,]/g, '').replace(',', '.') || '0')
       if (!isNaN(price)) groups[key].totalSpend += price
     }
     return Object.values(groups).sort((a, b) => b.purchases.length - a.purchases.length)
-  })()
+  }, [allProducts, filter, search])
+
+  // Vue par catégorie
+  const categoryGroups = useMemo(() => {
+    const fp = allProducts.filter(p => {
+      const matchFilter = filter === 'Tous' || p.supplier === filter
+      const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase())
+      return matchFilter && matchSearch
+    })
+    const groups: Record<string, { category: string; products: Product[]; totalSpend: number }> = {}
+    for (const p of fp) {
+      const cat = classifyProduct(p.name)
+      if (!groups[cat]) groups[cat] = { category: cat, products: [], totalSpend: 0 }
+      groups[cat].products.push(p)
+      const price = parseFloat(p.price?.replace(/[^0-9.,]/g, '').replace(',', '.') || '0')
+      if (!isNaN(price)) groups[cat].totalSpend += price
+    }
+    return Object.values(groups).sort((a, b) => b.products.length - a.products.length)
+  }, [allProducts, filter, search])
 
   const orderProducts = selectedOrder ? (productsByOrder[selectedOrder.id] || []) : []
 
@@ -184,6 +255,7 @@ export default function HistoryPage() {
         </div>
       )}
 
+      {/* Détail d'une commande (modal plein écran) */}
       {selectedOrder && (
         <div className="fixed inset-0 z-50 flex flex-col bg-cream-50 animate-fade-up">
           <div className="sticky top-0 bg-cream-50/95 backdrop-blur-md border-b border-forest-100/30 px-5 py-4 flex items-center gap-3">
@@ -197,12 +269,12 @@ export default function HistoryPage() {
               <p className="text-xs text-stone-warm/60 font-body">{formatDate(selectedOrder.date)}</p>
             </div>
             <div className="ml-auto text-right">
-              <p className="font-display text-lg text-forest-800 font-medium">{selectedOrder.total}</p>
+              <p className="font-display text-lg text-forest-800 font-medium">{getOrderTotal(selectedOrder)}</p>
               <span className="text-[10px] bg-forest-100 text-forest-600 px-2 py-0.5 rounded-full font-body">{selectedOrder.status}</span>
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5 pb-10">
+          <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5 pb-28">
             <div className="card px-4 py-3.5">
               <p className="text-xs font-medium text-forest-700 uppercase tracking-wider font-body mb-2">Résumé</p>
               <p className="text-sm text-stone-warm/80 font-body leading-relaxed">{selectedOrder.items}</p>
@@ -218,7 +290,12 @@ export default function HistoryPage() {
                     <div key={i} className="px-4 py-3 flex items-center justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-forest-800 font-body font-medium truncate">{p.name}</p>
-                        {(p.quantity || p.unit) && <p className="text-xs text-stone-warm/60 font-body">{p.quantity} {p.unit}</p>}
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {(p.quantity || p.unit) && <p className="text-xs text-stone-warm/60 font-body">{p.quantity} {p.unit}</p>}
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-cream-100 text-stone-warm/50 font-body">
+                            {CATEGORY_CONFIG[classifyProduct(p.name)]?.emoji} {classifyProduct(p.name)}
+                          </span>
+                        </div>
                       </div>
                       {p.price && <p className="text-sm font-medium text-forest-700 font-body flex-shrink-0">{p.price}</p>}
                     </div>
@@ -230,13 +307,19 @@ export default function HistoryPage() {
                 <p className="text-sm text-stone-warm/50 font-body">Détail des articles non disponible pour cette commande</p>
               </div>
             )}
+          </div>
 
+          {/* Bouton supprimer fixe en bas — bien visible */}
+          <div className="sticky bottom-0 bg-cream-50/95 backdrop-blur-md border-t border-forest-100/30 px-5 py-4">
             <button
               onClick={() => deleteOrder(selectedOrder)}
               disabled={deleting === selectedOrder.id}
-              className="w-full py-3 rounded-xl bg-red-50 text-red-500 text-sm font-medium font-body active:scale-[0.98] transition-transform disabled:opacity-50"
+              className="w-full py-3.5 rounded-xl bg-red-500 text-white text-sm font-medium font-body active:scale-[0.98] transition-transform disabled:opacity-50 flex items-center justify-center gap-2 shadow-md"
             >
-              {deleting === selectedOrder.id ? 'Suppression...' : 'Supprimer cette facture'}
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+                <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14zM10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              {deleting === selectedOrder.id ? 'Suppression en cours...' : 'Supprimer cette facture'}
             </button>
           </div>
         </div>
@@ -306,15 +389,24 @@ export default function HistoryPage() {
             ))}
           </div>
 
-          <div className="flex gap-2">
-            <button onClick={() => setViewMode('date')} className={cn(
-              'flex-1 py-2 rounded-xl text-xs font-medium font-body transition-all text-center',
-              viewMode === 'date' ? 'bg-forest-700 text-cream-50' : 'bg-cream-100 text-stone-warm'
-            )}>Par date</button>
-            <button onClick={() => setViewMode('product')} className={cn(
-              'flex-1 py-2 rounded-xl text-xs font-medium font-body transition-all text-center',
-              viewMode === 'product' ? 'bg-forest-700 text-cream-50' : 'bg-cream-100 text-stone-warm'
-            )}>Par produit</button>
+          {/* View mode tabs */}
+          <div className="flex gap-1.5 bg-cream-100 rounded-xl p-1">
+            {([
+              { key: 'date', label: 'Par date' },
+              { key: 'product', label: 'Par produit' },
+              { key: 'category', label: 'Par catégorie' },
+            ] as const).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setViewMode(tab.key)}
+                className={cn(
+                  'flex-1 py-2 rounded-lg text-xs font-medium font-body transition-all text-center',
+                  viewMode === tab.key ? 'bg-forest-700 text-cream-50 shadow-sm' : 'text-stone-warm'
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -349,7 +441,7 @@ export default function HistoryPage() {
                   <div className="flex-1 h-px bg-forest-100/60" />
                   <p className="text-xs text-stone-warm/40 font-body">
                     {monthOrders.reduce((s, o) => {
-                      const v = parseFloat(o.total?.replace(/[^0-9.]/g, '') || '0')
+                      const v = parseFloat(getOrderTotal(o)?.replace(/[^0-9.,]/g, '').replace(',', '.') || '0')
                       return s + (isNaN(v) ? 0 : v)
                     }, 0).toFixed(2)} €
                   </p>
@@ -358,6 +450,7 @@ export default function HistoryPage() {
                   {monthOrders.map((order, i) => {
                     const config = getSupplier(order.supplier)
                     const hasDetail = (productsByOrder[order.id] || []).length > 0
+                    const total = getOrderTotal(order)
                     return (
                       <button key={order.id} onClick={() => setSelectedOrder(order)} className="card w-full text-left overflow-hidden active:scale-[0.98] transition-transform" style={{ animationDelay: `${i * 40}ms` }}>
                         <div className="h-0.5 w-full" style={{ backgroundColor: config.color }} />
@@ -366,7 +459,7 @@ export default function HistoryPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2 mb-0.5">
                               <p className="text-sm font-medium text-forest-800 font-body">{order.supplier}</p>
-                              <p className="font-display text-sm font-medium text-forest-800">{order.total}</p>
+                              <p className="font-display text-sm font-medium text-forest-800">{total}</p>
                             </div>
                             <p className="text-xs text-stone-warm/60 font-body mb-1.5">{formatShortDate(order.date)}</p>
                             <p className="text-xs text-stone-warm/70 font-body leading-relaxed line-clamp-2">{order.items}</p>
@@ -400,12 +493,19 @@ export default function HistoryPage() {
             <div className="space-y-2 animate-fade-up">
               {productGroups.map((group) => {
                 const isExpanded = expandedProduct === group.name.toLowerCase()
+                const cat = classifyProduct(group.name)
+                const catConf = CATEGORY_CONFIG[cat] || CATEGORY_CONFIG['Autre']
                 return (
                   <div key={group.name.toLowerCase()}>
                     <button onClick={() => setExpandedProduct(isExpanded ? null : group.name.toLowerCase())} className="card w-full text-left px-4 py-3.5 active:scale-[0.98] transition-transform">
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-forest-800 font-body truncate">{group.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-forest-800 font-body truncate">{group.name}</p>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded font-body flex-shrink-0" style={{ backgroundColor: catConf.bg, color: catConf.color }}>
+                              {catConf.emoji} {cat}
+                            </span>
+                          </div>
                           <p className="text-xs text-stone-warm/60 font-body mt-0.5">
                             Acheté {group.purchases.length} fois · {group.totalSpend.toFixed(2)} €
                           </p>
@@ -426,6 +526,99 @@ export default function HistoryPage() {
                             </div>
                           )
                         })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+
+        {/* VUE PAR CATÉGORIE */}
+        {!loading && viewMode === 'category' && (
+          <>
+            {categoryGroups.length === 0 && (
+              <div className="card px-5 py-10 text-center animate-fade-up">
+                <p className="text-3xl mb-3">🏷️</p>
+                <p className="font-display text-base text-forest-800 mb-1">Aucun produit trouvé</p>
+                <p className="text-sm text-stone-warm/60 font-body">
+                  {search ? 'Essayez un autre terme' : 'Les catégories apparaîtront après import de factures'}
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-3 animate-fade-up">
+              {categoryGroups.map((group) => {
+                const catConf = CATEGORY_CONFIG[group.category] || CATEGORY_CONFIG['Autre']
+                const isExpanded = expandedCategory === group.category
+
+                // Dédupliquer les produits par nom dans cette catégorie
+                const uniqueProducts: Record<string, { name: string; count: number; totalSpend: number; lastDate: string; suppliers: Set<string> }> = {}
+                for (const p of group.products) {
+                  const key = p.name.toLowerCase().trim()
+                  if (!uniqueProducts[key]) {
+                    uniqueProducts[key] = { name: p.name, count: 0, totalSpend: 0, lastDate: '', suppliers: new Set() }
+                  }
+                  uniqueProducts[key].count++
+                  const price = parseFloat(p.price?.replace(/[^0-9.,]/g, '').replace(',', '.') || '0')
+                  if (!isNaN(price)) uniqueProducts[key].totalSpend += price
+                  if (p.date > uniqueProducts[key].lastDate) uniqueProducts[key].lastDate = p.date
+                  if (p.supplier) uniqueProducts[key].suppliers.add(p.supplier)
+                }
+                const sortedProducts = Object.values(uniqueProducts).sort((a, b) => b.count - a.count)
+
+                return (
+                  <div key={group.category}>
+                    <button
+                      onClick={() => setExpandedCategory(isExpanded ? null : group.category)}
+                      className="card w-full text-left overflow-hidden active:scale-[0.98] transition-transform"
+                    >
+                      <div className="h-1 w-full" style={{ backgroundColor: catConf.color }} />
+                      <div className="px-4 py-3.5 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0" style={{ backgroundColor: catConf.bg }}>
+                          {catConf.emoji}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-forest-800 font-body">{group.category}</p>
+                          <p className="text-xs text-stone-warm/60 font-body mt-0.5">
+                            {sortedProducts.length} produit{sortedProducts.length > 1 ? 's' : ''} · {group.products.length} achats · {group.totalSpend.toFixed(2)} €
+                          </p>
+                        </div>
+                        <span className={cn('text-stone-warm/30 text-lg transition-transform', isExpanded && 'rotate-90')}>›</span>
+                      </div>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="ml-2 mt-1.5 space-y-1 animate-scale-in">
+                        {sortedProducts.map((product, i) => (
+                          <div key={i} className="flex items-center gap-2 px-3 py-2.5 rounded-lg" style={{ backgroundColor: catConf.bg + '60' }}>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-forest-800 font-body font-medium truncate">{product.name}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[10px] text-stone-warm/50 font-body">
+                                  {product.count}x achetés
+                                </span>
+                                {product.lastDate && (
+                                  <>
+                                    <span className="text-stone-warm/20">·</span>
+                                    <span className="text-[10px] text-stone-warm/50 font-body">
+                                      dernier : {formatShortDate(product.lastDate)}
+                                    </span>
+                                  </>
+                                )}
+                                {Array.from(product.suppliers).map(s => (
+                                  <span key={s} className="text-[10px]">{getSupplier(s).emoji}</span>
+                                ))}
+                              </div>
+                            </div>
+                            {product.totalSpend > 0 && (
+                              <span className="text-xs font-medium text-forest-700 font-body flex-shrink-0">
+                                {product.totalSpend.toFixed(2)} €
+                              </span>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
