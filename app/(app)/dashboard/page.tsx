@@ -1,4 +1,5 @@
 import { AppHeader } from '@/components/AppHeader'
+import { StockAlertBanner } from '@/components/StockAlertBanner'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import Link from 'next/link'
@@ -33,18 +34,8 @@ export default async function DashboardPage() {
 
       <div className="px-5 py-6 space-y-7">
 
-        {/* Stock alert banner */}
-        <div className="card px-4 py-4 border-l-4 border-l-terra-500 animate-fade-up">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-forest-800 font-body">3 produits à réapprovisionner</p>
-              <p className="text-xs text-stone-warm/70 font-body mt-0.5">Lait, œufs, yaourts — stock bas</p>
-            </div>
-            <Link href="/shopping-list" className="text-xs text-terra-500 font-medium font-body whitespace-nowrap">
-              Voir →
-            </Link>
-          </div>
-        </div>
+        {/* Stock alert banner — données en temps réel */}
+        <StockAlertBanner />
 
         {/* Quick actions */}
         <section className="animate-fade-up animate-delay-100">
