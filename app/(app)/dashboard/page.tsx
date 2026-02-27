@@ -7,7 +7,9 @@ import Link from 'next/link'
 
 const quickActions = [
   { href: '/fridge', label: 'Scanner le frigo', icon: '📷', description: 'Prendre une photo' },
+  { href: '/meals', label: 'Idées repas', icon: '🥗', description: 'Menu semaine' },
   { href: '/shopping-list', label: 'Mes courses', icon: '🛍️', description: 'Voir la liste' },
+  { href: '/import', label: 'Factures', icon: '📄', description: 'Importer un PDF' },
   { href: '/analytics', label: 'Analyse IA', icon: '✨', description: 'Vos habitudes' },
   { href: '/history', label: 'Commandes', icon: '📦', description: 'Historique' },
 ]
@@ -34,7 +36,7 @@ export default async function DashboardPage() {
         {/* Quick actions */}
         <section className="animate-fade-up animate-delay-100">
           <h2 className="font-display text-base text-forest-700 mb-3 font-medium">Actions rapides</h2>
-          <div className="grid grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-3 gap-2.5">
             {quickActions.map((action) => (
               <Link key={action.href} href={action.href}>
                 <div className="card p-3.5 text-center active:scale-95 transition-transform duration-150">

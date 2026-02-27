@@ -31,16 +31,14 @@ const navItems = [
     ),
   },
   {
-    href: '/import',
-    label: 'Factures',
+    href: '/meals',
+    label: 'Repas',
     icon: (active: boolean) => (
       <svg width="22" height="22" fill="none" viewBox="0 0 24 24">
-        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"
-          stroke="currentColor" strokeWidth={active ? 2 : 1.5}
-          fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.12 : 0}
-          strokeLinejoin="round"/>
-        <path d="M14 2v6h6M12 18v-6M9 15l3 3 3-3"
-          stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round"/>
+        <circle cx="7" cy="6" r="1.5" fill="currentColor" fillOpacity={active ? 0.8 : 0.4}/>
+        <circle cx="7" cy="12" r="1.5" fill="currentColor" fillOpacity={active ? 0.8 : 0.4}/>
+        <circle cx="7" cy="18" r="1.5" fill="currentColor" fillOpacity={active ? 0.8 : 0.4}/>
       </svg>
     ),
   },
