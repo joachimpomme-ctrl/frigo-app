@@ -1,10 +1,10 @@
 'use client'
 
 import { AppHeader } from '@/components/AppHeader'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 
-type AppStep = 'idle' | 'analyzing' | 'editing' | 'saving' | 'saved'
+type AppStep = 'loading' | 'idle' | 'analyzing' | 'editing' | 'saving' | 'saved'
 
 interface StockItem {
   id: string
@@ -48,7 +48,7 @@ function makeId() {
 }
 
 export default function FridgePage() {
-  const [step, setStep]           = useState<AppStep>('idle')
+  const [step, setStep]           = useState<AppStep>('loading')
   const [items, setItems]         = useState<StockItem[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [location, setLocation]   = useState('frigo')
@@ -59,6 +59,37 @@ export default function FridgePage() {
   const [newItem, setNewItem]     = useState({ name: '', quantity: '', unit: '' })
   const [statusFilter, setStatusFilter] = useState<'ok' | 'low' | 'missing' | null>(null)
   const [photoCount, setPhotoCount] = useState(0)
+  const [lastSavedLabel, setLastSavedLabel] = useState('')
+
+  // --- Charger l'inventaire sauvegardé au montage ---
+  useEffect(() => {
+    fetch('/api/stock')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data?.sessions?.length) {
+          setStep('idle')
+          return
+        }
+        // Charger le dernier inventaire
+        const latest = data.sessions[0]
+        const loadedItems: StockItem[] = latest.items.map((item: any) => ({
+          id:       makeId(),
+          name:     item.name || '',
+          quantity: item.quantity || '',
+          unit:     item.unit || '',
+          status:   item.status || 'ok',
+          location: item.location || 'frigo',
+          source:   'scan' as const,
+          category: item.category || 'Autre',
+        }))
+        setItems(loadedItems)
+        setSavedCount(loadedItems.length)
+        setLastSavedLabel(latest.label || '')
+        setStep('saved')
+      })
+      .catch(() => setStep('idle'))
+  }, [])
+
   // --- Scan photos (multiple) ---
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files
@@ -166,6 +197,7 @@ export default function FridgePage() {
       if (!res.ok) throw new Error('Erreur sauvegarde')
       const data = await res.json()
       setSavedCount(data.saved || items.length)
+      setLastSavedLabel(label || `Inventaire ${new Date().toLocaleDateString('fr-FR')}`)
       setStep('saved')
     } catch {
       setError('Erreur lors de la sauvegarde. Réessayez.')
@@ -208,7 +240,11 @@ export default function FridgePage() {
     <>
       <AppHeader
         title="Inventaire"
-        subtitle={items.length > 0 ? `${items.length} produits${photoCount > 0 ? ` · ${photoCount} photo${photoCount > 1 ? 's' : ''}` : ''}` : 'Scanner & gérer vos stocks'}
+        subtitle={
+          step === 'loading' ? 'Chargement…' :
+          items.length > 0 ? `${items.length} produits${photoCount > 0 ? ` · ${photoCount} photo${photoCount > 1 ? 's' : ''}` : ''}` :
+          'Scanner & gérer vos stocks'
+        }
       />
 
       {/* Hidden file inputs — positioned offscreen for reliable label triggering on mobile */}
@@ -238,6 +274,18 @@ export default function FridgePage() {
       />
 
       <div className="px-5 py-5 space-y-5">
+
+        {/* LOADING */}
+        {step === 'loading' && (
+          <div className="space-y-3 animate-fade-in">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="card p-4 space-y-2">
+                <div className="skeleton h-4 w-1/3" />
+                <div className="skeleton h-3 w-2/3" />
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* IDLE */}
         {step === 'idle' && (
@@ -614,9 +662,11 @@ export default function FridgePage() {
                     <path d="M2 10l7 7L22 2" stroke="#86efac" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </div>
-                <p className="font-display text-2xl text-cream-50 mb-1">Inventaire sauvegardé</p>
+                <p className="font-display text-2xl text-cream-50 mb-1">
+                  {lastSavedLabel || 'Inventaire sauvegardé'}
+                </p>
                 <p className="text-sm text-cream-100/60 font-body">
-                  {savedCount} produits enregistrés dans Google Sheets
+                  {savedCount} produits enregistrés
                 </p>
               </div>
             </div>

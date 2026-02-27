@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
   try {
-    const rows = await readRange('Inventaire!A2:I2000')
+    const rows = await readRange('Inventaire!A2:J2000')
 
     // Grouper par session
     const sessions: Record<string, {
@@ -107,6 +107,7 @@ export async function GET(req: NextRequest) {
         quantity: row[6] || '',
         unit:     row[7] || '',
         status:   (row[8] as 'ok' | 'low' | 'missing') || 'ok',
+        category: row[9] || 'Autre',
       })
     }
 
