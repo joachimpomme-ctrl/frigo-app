@@ -113,6 +113,19 @@ export default function HistoryPage() {
   const [toast, setToast]                 = useState<string | null>(null)
   const [expandedProduct, setExpandedProduct] = useState<string | null>(null)
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
+  const [categoryOverrides, setCategoryOverrides] = useState<Record<string, string>>({})
+  const [editingCategory, setEditingCategory] = useState<string | null>(null)
+
+  const getProductCategory = (name: string): string => {
+    const key = name.toLowerCase().trim()
+    return categoryOverrides[key] || classifyProduct(name)
+  }
+
+  const changeProductCategory = (productName: string, newCategory: string) => {
+    const key = productName.toLowerCase().trim()
+    setCategoryOverrides(prev => ({ ...prev, [key]: newCategory }))
+    setEditingCategory(null)
+  }
 
   useEffect(() => {
     fetch('/api/orders')
@@ -231,14 +244,14 @@ export default function HistoryPage() {
     })
     const groups: Record<string, { category: string; products: Product[]; totalSpend: number }> = {}
     for (const p of fp) {
-      const cat = classifyProduct(p.name)
+      const cat = getProductCategory(p.name)
       if (!groups[cat]) groups[cat] = { category: cat, products: [], totalSpend: 0 }
       groups[cat].products.push(p)
       const price = parseFloat(p.price?.replace(/[^0-9.,]/g, '').replace(',', '.') || '0')
       if (!isNaN(price)) groups[cat].totalSpend += price
     }
     return Object.values(groups).sort((a, b) => b.products.length - a.products.length)
-  }, [allProducts, filter, search])
+  }, [allProducts, filter, search, categoryOverrides])
 
   const orderProducts = selectedOrder ? (productsByOrder[selectedOrder.id] || []) : []
 
@@ -293,7 +306,7 @@ export default function HistoryPage() {
                         <div className="flex items-center gap-2 mt-0.5">
                           {(p.quantity || p.unit) && <p className="text-xs text-stone-warm/60 font-body">{p.quantity} {p.unit}</p>}
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-cream-100 text-stone-warm/50 font-body">
-                            {CATEGORY_CONFIG[classifyProduct(p.name)]?.emoji} {classifyProduct(p.name)}
+                            {CATEGORY_CONFIG[getProductCategory(p.name)]?.emoji} {getProductCategory(p.name)}
                           </span>
                         </div>
                       </div>
@@ -493,26 +506,49 @@ export default function HistoryPage() {
             <div className="space-y-2 animate-fade-up">
               {productGroups.map((group) => {
                 const isExpanded = expandedProduct === group.name.toLowerCase()
-                const cat = classifyProduct(group.name)
+                const cat = getProductCategory(group.name)
                 const catConf = CATEGORY_CONFIG[cat] || CATEGORY_CONFIG['Autre']
+                const isEditingCat = editingCategory === group.name.toLowerCase()
                 return (
                   <div key={group.name.toLowerCase()}>
-                    <button onClick={() => setExpandedProduct(isExpanded ? null : group.name.toLowerCase())} className="card w-full text-left px-4 py-3.5 active:scale-[0.98] transition-transform">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium text-forest-800 font-body truncate">{group.name}</p>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded font-body flex-shrink-0" style={{ backgroundColor: catConf.bg, color: catConf.color }}>
-                              {catConf.emoji} {cat}
-                            </span>
+                    <div className="card w-full text-left px-4 py-3.5">
+                      <button onClick={() => setExpandedProduct(isExpanded ? null : group.name.toLowerCase())} className="w-full text-left active:scale-[0.98] transition-transform">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium text-forest-800 font-body truncate">{group.name}</p>
+                              <span
+                                onClick={(e) => { e.stopPropagation(); setEditingCategory(isEditingCat ? null : group.name.toLowerCase()) }}
+                                className="text-[10px] px-1.5 py-0.5 rounded font-body flex-shrink-0 cursor-pointer active:scale-90 transition-transform"
+                                style={{ backgroundColor: catConf.bg, color: catConf.color }}
+                              >
+                                {catConf.emoji} {cat} ✎
+                              </span>
+                            </div>
+                            <p className="text-xs text-stone-warm/60 font-body mt-0.5">
+                              Acheté {group.purchases.length} fois · {group.totalSpend.toFixed(2)} €
+                            </p>
                           </div>
-                          <p className="text-xs text-stone-warm/60 font-body mt-0.5">
-                            Acheté {group.purchases.length} fois · {group.totalSpend.toFixed(2)} €
-                          </p>
+                          <span className={cn('text-stone-warm/30 text-sm transition-transform', isExpanded && 'rotate-90')}>›</span>
                         </div>
-                        <span className={cn('text-stone-warm/30 text-sm transition-transform', isExpanded && 'rotate-90')}>›</span>
-                      </div>
-                    </button>
+                      </button>
+                      {isEditingCat && (
+                        <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-forest-100/30 animate-scale-in">
+                          {Object.entries(CATEGORY_CONFIG).map(([catId, conf]) => (
+                            <button
+                              key={catId}
+                              onClick={() => changeProductCategory(group.name, catId)}
+                              className={cn(
+                                'px-2 py-1.5 rounded-lg text-[10px] font-body font-medium transition-all',
+                                cat === catId ? 'bg-terra-500 text-cream-50' : 'bg-cream-100 text-stone-warm'
+                              )}
+                            >
+                              {conf.emoji} {catId}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     {isExpanded && (
                       <div className="ml-4 mt-1 space-y-1 animate-scale-in">
                         {group.purchases.sort((a, b) => b.date.localeCompare(a.date)).map((p, i) => {
@@ -591,34 +627,62 @@ export default function HistoryPage() {
 
                     {isExpanded && (
                       <div className="ml-2 mt-1.5 space-y-1 animate-scale-in">
-                        {sortedProducts.map((product, i) => (
-                          <div key={i} className="flex items-center gap-2 px-3 py-2.5 rounded-lg" style={{ backgroundColor: catConf.bg + '60' }}>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm text-forest-800 font-body font-medium truncate">{product.name}</p>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-[10px] text-stone-warm/50 font-body">
-                                  {product.count}x achetés
-                                </span>
-                                {product.lastDate && (
-                                  <>
-                                    <span className="text-stone-warm/20">·</span>
+                        {sortedProducts.map((product, i) => {
+                          const isEditingThisCat = editingCategory === `cat-${product.name.toLowerCase().trim()}`
+                          return (
+                            <div key={i}>
+                              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg" style={{ backgroundColor: catConf.bg + '60' }}>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-forest-800 font-body font-medium truncate">{product.name}</p>
+                                  <div className="flex items-center gap-2 mt-0.5">
                                     <span className="text-[10px] text-stone-warm/50 font-body">
-                                      dernier : {formatShortDate(product.lastDate)}
+                                      {product.count}x achetés
                                     </span>
-                                  </>
+                                    {product.lastDate && (
+                                      <>
+                                        <span className="text-stone-warm/20">·</span>
+                                        <span className="text-[10px] text-stone-warm/50 font-body">
+                                          dernier : {formatShortDate(product.lastDate)}
+                                        </span>
+                                      </>
+                                    )}
+                                    {Array.from(product.suppliers).map(s => (
+                                      <span key={s} className="text-[10px]">{getSupplier(s).emoji}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => setEditingCategory(isEditingThisCat ? null : `cat-${product.name.toLowerCase().trim()}`)}
+                                  className="text-[10px] px-1.5 py-0.5 rounded font-body flex-shrink-0 active:scale-90 transition-transform"
+                                  style={{ backgroundColor: catConf.bg, color: catConf.color }}
+                                >
+                                  ✎
+                                </button>
+                                {product.totalSpend > 0 && (
+                                  <span className="text-xs font-medium text-forest-700 font-body flex-shrink-0">
+                                    {product.totalSpend.toFixed(2)} €
+                                  </span>
                                 )}
-                                {Array.from(product.suppliers).map(s => (
-                                  <span key={s} className="text-[10px]">{getSupplier(s).emoji}</span>
-                                ))}
                               </div>
+                              {isEditingThisCat && (
+                                <div className="flex flex-wrap gap-1.5 mt-1 ml-3 animate-scale-in">
+                                  {Object.entries(CATEGORY_CONFIG).map(([catId, conf]) => (
+                                    <button
+                                      key={catId}
+                                      onClick={() => changeProductCategory(product.name, catId)}
+                                      className={cn(
+                                        'px-2 py-1.5 rounded-lg text-[10px] font-body font-medium transition-all',
+                                        group.category === catId ? 'bg-terra-500 text-cream-50' : 'bg-cream-100 text-stone-warm'
+                                      )}
+                                    >
+                                      {conf.emoji} {catId}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                            {product.totalSpend > 0 && (
-                              <span className="text-xs font-medium text-forest-700 font-body flex-shrink-0">
-                                {product.totalSpend.toFixed(2)} €
-                              </span>
-                            )}
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     )}
                   </div>

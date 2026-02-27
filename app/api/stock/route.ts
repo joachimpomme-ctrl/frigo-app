@@ -9,6 +9,7 @@ export interface StockItem {
   unit: string
   status: 'ok' | 'low' | 'missing'
   location: string // 'frigo', 'placard', 'cave', etc.
+  category?: string
 }
 
 // POST — Sauvegarder un inventaire
@@ -39,9 +40,10 @@ export async function POST(req: NextRequest) {
       item.quantity,
       item.unit || '',
       item.status,
+      item.category || 'Autre',
     ])
 
-    await appendRows('Inventaire!A:I', rows)
+    await appendRows('Inventaire!A:J', rows)
 
     // Mettre à jour aussi l'onglet Stock (état actuel)
     // On écrase les items existants du même emplacement
@@ -54,7 +56,7 @@ export async function POST(req: NextRequest) {
         item.quantity,
         item.unit || '',
         item.status,
-        '',
+        item.category || 'Autre',
         dateStr,
       ])
 

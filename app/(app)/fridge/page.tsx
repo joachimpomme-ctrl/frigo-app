@@ -30,6 +30,19 @@ const LOCATIONS = [
   { id: 'cave',    label: 'Cave',     emoji: '🍷' },
 ]
 
+const CATEGORIES = [
+  { id: 'Fruits',    label: 'Fruits',    emoji: '🍎' },
+  { id: 'Légumes',   label: 'Légumes',   emoji: '🥬' },
+  { id: 'Viande',    label: 'Viande',    emoji: '🥩' },
+  { id: 'Poisson',   label: 'Poisson',   emoji: '🐟' },
+  { id: 'Laitage',   label: 'Laitage',   emoji: '🧀' },
+  { id: 'Épicerie',  label: 'Épicerie',  emoji: '🫙' },
+  { id: 'Boissons',  label: 'Boissons',  emoji: '🥤' },
+  { id: 'Surgelés',  label: 'Surgelés',  emoji: '🧊' },
+  { id: 'Hygiène',   label: 'Hygiène',   emoji: '🧴' },
+  { id: 'Autre',     label: 'Autre',     emoji: '📦' },
+]
+
 function makeId() {
   return Math.random().toString(36).slice(2, 9)
 }
@@ -144,8 +157,8 @@ export default function FridgePage() {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          items: items.map(({ name, quantity, unit, status, location }) =>
-            ({ name, quantity, unit, status, location })
+          items: items.map(({ name, quantity, unit, status, location, category }) =>
+            ({ name, quantity, unit, status, location, category })
           ),
           label: label || `Inventaire ${new Date().toLocaleDateString('fr-FR')}`,
         }),
@@ -199,12 +212,12 @@ export default function FridgePage() {
         subtitle={items.length > 0 ? `${items.length} produits${photoCount > 0 ? ` · ${photoCount} photo${photoCount > 1 ? 's' : ''}` : ''}` : 'Scanner & gérer vos stocks'}
       />
 
-      {/* File input for initial scan (multiple) */}
+      {/* File input for initial scan (camera) */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        multiple
+        capture="environment"
         onChange={handleFileChange}
         className="sr-only"
       />
@@ -443,6 +456,21 @@ export default function FridgePage() {
                                 </button>
                               ))}
                             </div>
+                            {/* Category */}
+                            <div className="flex flex-wrap gap-1.5">
+                              {CATEGORIES.map(cat => (
+                                <button
+                                  key={cat.id}
+                                  onClick={() => updateItem(item.id, { category: cat.id })}
+                                  className={cn(
+                                    'px-2 py-1.5 rounded-lg text-[10px] font-body font-medium transition-all',
+                                    item.category === cat.id ? 'bg-terra-500 text-cream-50' : 'bg-cream-100 text-stone-warm'
+                                  )}
+                                >
+                                  {cat.emoji} {cat.label}
+                                </button>
+                              ))}
+                            </div>
                             <div className="flex gap-2 pt-1">
                               <button
                                 onClick={() => setEditingId(null)}
@@ -477,6 +505,11 @@ export default function FridgePage() {
                               <p className="text-xs text-stone-warm/60 font-body">
                                 {item.quantity} {item.unit}
                               </p>
+                              {item.category && item.category !== 'Autre' && (
+                                <span className="text-[10px] text-stone-warm/50 font-body">
+                                  · {CATEGORIES.find(c => c.id === item.category)?.emoji} {item.category}
+                                </span>
+                              )}
                               {item.location && (
                                 <span className="text-[10px] text-stone-warm/40 font-body">
                                   · {LOCATIONS.find(l => l.id === item.location)?.emoji} {LOCATIONS.find(l => l.id === item.location)?.label}

@@ -94,17 +94,19 @@ body {
 /* ============================================
    Cards & Surfaces
    ============================================ */
-.card {
-  background: white;
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
-  border: 1px solid rgba(212, 232, 212, 0.4);
-}
+@layer components {
+  .card {
+    background: white;
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+    border: 1px solid rgba(212, 232, 212, 0.4);
+  }
 
-.card-elevated {
-  background: white;
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-elevated);
+  .card-elevated {
+    background: white;
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-elevated);
+  }
 }
 
 /* ============================================
