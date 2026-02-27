@@ -3,8 +3,14 @@
 import { AppHeader } from '@/components/AppHeader'
 import { useState, useRef } from 'react'
 import { cn } from '@/lib/utils'
+import * as pdfjsLib from 'pdfjs-dist'
 
-type Step = 'idle' | 'preview' | 'analyzing' | 'success' | 'duplicate' | 'error'
+// Worker pour pdf.js (nécessaire pour le parsing)
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
+}
+
+type Step = 'idle' | 'preview' | 'converting' | 'analyzing' | 'success' | 'duplicate' | 'error'
 
 interface ParsedOrder {
   supplier: string
@@ -41,17 +47,51 @@ export default function ImportPage() {
     setResult(null)
   }
 
+  // Convertir un PDF en images PNG (base64) via pdf.js dans le navigateur
+  const pdfToImages = async (pdfFile: File): Promise<string[]> => {
+    const arrayBuffer = await pdfFile.arrayBuffer()
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+    const images: string[] = []
+
+    // Limiter à 10 pages max pour éviter les timeouts
+    const pageCount = Math.min(pdf.numPages, 10)
+
+    for (let i = 1; i <= pageCount; i++) {
+      const page = await pdf.getPage(i)
+      // Scale 2x pour une bonne lisibilité par Claude
+      const scale = 2
+      const viewport = page.getViewport({ scale })
+
+      const canvas = document.createElement('canvas')
+      canvas.width = viewport.width
+      canvas.height = viewport.height
+      const ctx = canvas.getContext('2d')!
+
+      await page.render({ canvasContext: ctx, viewport }).promise
+
+      // Convertir en JPEG base64 (bien plus léger que PNG pour l'envoi)
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+      const base64 = dataUrl.split(',')[1]
+      images.push(base64)
+    }
+
+    return images
+  }
+
   const handleAnalyze = async () => {
     if (!file) return
-    setStep('analyzing')
 
     try {
-      const formData = new FormData()
-      formData.append('pdf', file)
+      // Étape 1 : convertir le PDF en images côté navigateur
+      setStep('converting')
+      const images = await pdfToImages(file)
 
+      // Étape 2 : envoyer les images au serveur
+      setStep('analyzing')
       const res = await fetch('/api/import-invoice', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ images, filename: file.name }),
       })
 
       const data = await res.json()
@@ -174,6 +214,17 @@ export default function ImportPage() {
               <button onClick={reset} className="btn-secondary flex-1">↩ Changer</button>
               <button onClick={handleAnalyze} className="btn-primary flex-1">✨ Analyser</button>
             </div>
+          </div>
+        )}
+
+        {/* CONVERTING */}
+        {step === 'converting' && (
+          <div className="flex flex-col items-center justify-center py-24 animate-fade-in">
+            <div className="w-16 h-16 border-[3px] border-forest-200 border-t-forest-700 rounded-full animate-spin mb-6" />
+            <p className="font-display text-lg text-forest-800 mb-1">Lecture du PDF…</p>
+            <p className="text-sm text-stone-warm/60 font-body text-center max-w-xs">
+              Conversion des pages en images
+            </p>
           </div>
         )}
 

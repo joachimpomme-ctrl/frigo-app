@@ -7,7 +7,7 @@ import { appendRows, readRange } from '@/lib/sheets'
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 const SYSTEM_PROMPT = `Tu es un assistant spécialisé dans l'analyse de factures et confirmations de commande.
-Tu reçois un document PDF (facture, bon de commande, confirmation de livraison).
+Tu reçois les pages d'une facture sous forme d'images.
 
 Extrais les informations suivantes et réponds UNIQUEMENT avec un JSON valide, sans markdown.
 
@@ -25,7 +25,7 @@ Format exact :
 
 Règles :
 - Si tu ne trouves pas une info, mets une chaîne vide ""
-- Le champ "items" doit lister TOUS les articles trouvés
+- Le champ "items" doit lister TOUS les articles trouvés sur TOUTES les pages
 - "raw_items_summary" est une version courte pour l'affichage (5 articles max puis "+X autres")
 - Pour le fournisseur : détecte-le automatiquement depuis le document
 - Pour le statut : "livré" si c'est une facture/confirmation, "en attente" si c'est une commande`
@@ -39,39 +39,43 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const formData = await req.formData()
-    const file = formData.get('pdf') as File
+    // Le frontend envoie les pages du PDF converties en images PNG (base64)
+    const { images } = await req.json() as { images: string[]; filename: string }
 
-    if (!file) {
-      return NextResponse.json({ error: 'Aucun fichier fourni' }, { status: 400 })
+    if (!images || images.length === 0) {
+      return NextResponse.json({ error: 'Aucune image fournie' }, { status: 400 })
     }
 
-    // Convertir le PDF en base64
-    const arrayBuffer = await file.arrayBuffer()
-    const base64 = Buffer.from(arrayBuffer).toString('base64')
+    // Construire le message avec une image par page
+    const contentBlocks: Anthropic.MessageCreateParams['messages'][0]['content'] = []
+
+    for (let i = 0; i < images.length; i++) {
+      contentBlocks.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: 'image/jpeg',
+          data: images[i],
+        },
+      })
+    }
+
+    contentBlocks.push({
+      type: 'text',
+      text: images.length > 1
+        ? `Analyse ces ${images.length} pages de facture et extrais toutes les informations. Combine les articles de toutes les pages.`
+        : 'Analyse cette facture et extrais toutes les informations.',
+    })
 
     // Analyser avec Claude
     const message = await anthropic.messages.create({
-      model: 'claude-opus-4-6',
-      max_tokens: 2048,
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
       system: SYSTEM_PROMPT,
       messages: [
         {
           role: 'user',
-          content: [
-            {
-              type: 'document',
-              source: {
-                type: 'base64',
-                media_type: 'application/pdf',
-                data: base64,
-              },
-            },
-            {
-              type: 'text',
-              text: 'Analyse cette facture et extrais toutes les informations.',
-            },
-          ],
+          content: contentBlocks,
         },
       ],
     })
@@ -136,9 +140,9 @@ export async function POST(req: NextRequest) {
     })
 
   } catch (error) {
-    console.error('PDF import error:', error)
+    console.error('Invoice import error:', error)
     return NextResponse.json(
-      { error: "Erreur lors de l'analyse du PDF" },
+      { error: "Erreur lors de l'analyse de la facture" },
       { status: 500 }
     )
   }
