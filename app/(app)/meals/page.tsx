@@ -37,15 +37,18 @@ const TAG_CONFIG: Record<string, { label: string; bg: string; text: string }> = 
 }
 
 export default function MealsPage() {
-  const [step, setStep]         = useState<Step>('loading')
-  const [plan, setPlan]         = useState<MealPlan | null>(null)
+  const [step, setStep]             = useState<Step>('loading')
+  const [plan, setPlan]             = useState<MealPlan | null>(null)
   const [stockCount, setStockCount] = useState(0)
-  const [errorMsg, setErrorMsg] = useState('')
+  const [stockHash, setStockHash]   = useState('')
+  const [staleStock, setStaleStock] = useState(false)
+  const [errorMsg, setErrorMsg]     = useState('')
   const [selectedDay, setSelectedDay] = useState(0)
 
   const fetchMeals = async () => {
     setStep('loading')
     setErrorMsg('')
+    setStaleStock(false)
 
     try {
       const res = await fetch('/api/meal-suggestions')
@@ -62,6 +65,7 @@ export default function MealsPage() {
 
       setPlan(data.data)
       setStockCount(data.stockCount || 0)
+      setStockHash(data.stockHash || '')
       setSelectedDay(0)
       setStep('ready')
     } catch (err) {
@@ -70,7 +74,34 @@ export default function MealsPage() {
     }
   }
 
+  // Vérifier si le stock a changé quand l'utilisateur revient sur la page
+  const checkStockFreshness = async () => {
+    if (!stockHash || step !== 'ready') return
+    try {
+      const res = await fetch('/api/meal-suggestions/check?hash=' + stockHash)
+      const data = await res.json()
+      if (data.changed) {
+        setStaleStock(true)
+      }
+    } catch { /* silently ignore */ }
+  }
+
   useEffect(() => { fetchMeals() }, [])
+
+  // Re-vérifier quand la page reprend le focus (retour depuis /fridge par ex.)
+  useEffect(() => {
+    const onFocus = () => checkStockFreshness()
+    window.addEventListener('focus', onFocus)
+    // Aussi vérifier avec l'API de visibilité (changement d'onglet mobile)
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') checkStockFreshness()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  })
 
   const currentDay = plan?.days[selectedDay]
 
@@ -129,6 +160,28 @@ export default function MealsPage() {
         {/* READY — Plan de repas */}
         {step === 'ready' && plan && currentDay && (
           <div className="animate-fade-up space-y-5">
+
+            {/* Bandeau stock mis à jour */}
+            {staleStock && (
+              <button
+                onClick={fetchMeals}
+                className="w-full card px-4 py-3 flex items-center gap-3 border-l-4 border-l-forest-500
+                           active:bg-cream-50 transition-colors animate-fade-up"
+              >
+                <span className="text-lg">🔄</span>
+                <div className="flex-1 text-left">
+                  <p className="text-sm font-medium text-forest-800 font-body">
+                    Stock mis à jour
+                  </p>
+                  <p className="text-xs text-stone-warm/60 font-body">
+                    Appuyez pour actualiser les suggestions de repas
+                  </p>
+                </div>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-forest-500 flex-shrink-0">
+                  <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            )}
 
             {/* Stock badge */}
             <div className="flex items-center justify-between">
