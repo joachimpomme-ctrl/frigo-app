@@ -60,6 +60,7 @@ export default function FridgePage() {
   const [statusFilter, setStatusFilter] = useState<'ok' | 'low' | 'missing' | null>(null)
   const [photoCount, setPhotoCount] = useState(0)
   const fileInputRef              = useRef<HTMLInputElement>(null)
+  const galleryInputRef           = useRef<HTMLInputElement>(null)
   const addMoreInputRef           = useRef<HTMLInputElement>(null)
 
   // --- Scan photos (multiple) ---
@@ -67,6 +68,7 @@ export default function FridgePage() {
     const files = e.target.files
     if (!files || files.length === 0) return
     if (e.target === fileInputRef.current && fileInputRef.current) fileInputRef.current.value = ''
+    if (e.target === galleryInputRef.current && galleryInputRef.current) galleryInputRef.current.value = ''
     if (e.target === addMoreInputRef.current && addMoreInputRef.current) addMoreInputRef.current.value = ''
 
     setStep('analyzing')
@@ -212,7 +214,7 @@ export default function FridgePage() {
         subtitle={items.length > 0 ? `${items.length} produits${photoCount > 0 ? ` · ${photoCount} photo${photoCount > 1 ? 's' : ''}` : ''}` : 'Scanner & gérer vos stocks'}
       />
 
-      {/* File input for initial scan (camera) */}
+      {/* File input for camera (capture) */}
       <input
         ref={fileInputRef}
         type="file"
@@ -221,7 +223,16 @@ export default function FridgePage() {
         onChange={handleFileChange}
         className="sr-only"
       />
-      {/* File input for adding more photos */}
+      {/* File input for gallery (multiple, no capture) */}
+      <input
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={handleFileChange}
+        className="sr-only"
+      />
+      {/* File input for adding more photos in editing mode */}
       <input
         ref={addMoreInputRef}
         type="file"
@@ -236,22 +247,32 @@ export default function FridgePage() {
         {/* IDLE */}
         {step === 'idle' && (
           <div className="animate-fade-up space-y-4">
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="card flex flex-col items-center justify-center py-14 px-8 text-center
-                              border-2 border-dashed border-forest-200 cursor-pointer active:border-forest-400 transition-colors"
-            >
+            <div className="card flex flex-col items-center justify-center py-10 px-8 text-center
+                              border-2 border-dashed border-forest-200">
               <div className="w-20 h-20 rounded-3xl bg-forest-100 flex items-center justify-center mb-5">
                 <span className="text-4xl">📷</span>
               </div>
               <h2 className="font-display text-xl text-forest-800 mb-2">Scanner un emplacement</h2>
               <p className="text-sm text-stone-warm/70 font-body mb-2 max-w-xs">
-                Prenez une ou plusieurs photos de votre frigo, placard, etc.
+                Prenez une photo ou choisissez depuis votre galerie
               </p>
               <p className="text-xs text-stone-warm/50 font-body mb-6 max-w-xs">
                 Vous pourrez ajouter d'autres photos après l'analyse
               </p>
-              <span className="btn-primary pointer-events-none">📷 Choisir des photos</span>
+              <div className="flex gap-3 w-full max-w-xs">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="btn-primary flex-1"
+                >
+                  📷 Photo
+                </button>
+                <button
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="btn-secondary flex-1"
+                >
+                  🖼️ Galerie
+                </button>
+              </div>
             </div>
 
             {/* Emplacement */}
