@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
-import { appendRows, readRange } from '@/lib/sheets'
+import { appendRows, readRange, writeRange } from '@/lib/sheets'
+import { correctCategory, deduplicationKey } from '@/lib/product-utils'
 
 export interface StockItem {
   name: string
@@ -29,8 +30,17 @@ export async function POST(req: NextRequest) {
     const timeStr   = now.toTimeString().split(' ')[0].substring(0, 5)
     const sessionId = `stock-${Date.now()}`
 
-    // Écrire dans l'onglet Inventaire
-    const rows = items.map(item => [
+    // === ÉTAPE 1 : Corriger les catégories ===
+    const correctedItems = items.map(item => ({
+      ...item,
+      category: correctCategory(item.name, item.category || 'Autre'),
+    }))
+
+    // === ÉTAPE 2 : Dédupliquer par nom similaire ===
+    const mergedItems = deduplicateItems(correctedItems)
+
+    // Écrire dans l'onglet Inventaire (historique — on garde tout)
+    const rows = mergedItems.map(item => [
       sessionId,
       dateStr,
       timeStr,
@@ -45,26 +55,10 @@ export async function POST(req: NextRequest) {
 
     await appendRows('Inventaire!A:J', rows)
 
-    // Mettre à jour aussi l'onglet Stock (état actuel)
-    // On écrase les items existants du même emplacement
-    const stockRows = items
-      .filter(i => i.status !== 'missing')
-      .map(item => [
-        `${item.name}-${item.location}`,
-        item.name,
-        item.location || 'frigo',
-        item.quantity,
-        item.unit || '',
-        item.status,
-        item.category || 'Autre',
-        dateStr,
-      ])
+    // === ÉTAPE 3 : Mettre à jour l'onglet Stock (fusion avec l'existant) ===
+    await updateStockSheet(mergedItems, dateStr)
 
-    if (stockRows.length > 0) {
-      await appendRows('Stock!A:H', stockRows)
-    }
-
-    return NextResponse.json({ success: true, sessionId, saved: items.length })
+    return NextResponse.json({ success: true, sessionId, saved: mergedItems.length })
 
   } catch (error) {
     console.error('Save stock error:', error)
@@ -121,5 +115,107 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error('Get stock history error:', error)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+  }
+}
+
+// ============================================================
+// Déduplication : fusionner les items avec le même nom
+// ============================================================
+
+function deduplicateItems(items: StockItem[]): StockItem[] {
+  const merged = new Map<string, StockItem>()
+
+  for (const item of items) {
+    const key = deduplicationKey(item.name)
+    const existing = merged.get(key)
+
+    if (existing) {
+      // Fusionner : additionner les quantités si possible, garder le meilleur statut
+      existing.quantity = mergeQuantities(existing.quantity, item.quantity)
+      existing.status = bestStatus(existing.status, item.status)
+      // Garder le nom le plus long (souvent le plus descriptif)
+      if (item.name.length > existing.name.length) {
+        existing.name = item.name
+      }
+    } else {
+      merged.set(key, { ...item })
+    }
+  }
+
+  return Array.from(merged.values())
+}
+
+function mergeQuantities(a: string, b: string): string {
+  const numA = parseFloat(a)
+  const numB = parseFloat(b)
+  if (!isNaN(numA) && !isNaN(numB)) {
+    const sum = numA + numB
+    return sum === Math.floor(sum) ? sum.toString() : sum.toFixed(1)
+  }
+  if (a && b && a !== b) return `${a} + ${b}`
+  return a || b
+}
+
+function bestStatus(a: StockItem['status'], b: StockItem['status']): StockItem['status'] {
+  const priority = { ok: 2, low: 1, missing: 0 }
+  return priority[a] >= priority[b] ? a : b
+}
+
+// ============================================================
+// Mise à jour intelligente de l'onglet Stock (fusion avec existant)
+// ============================================================
+
+async function updateStockSheet(newItems: StockItem[], dateStr: string): Promise<void> {
+  // Lire le stock existant
+  const existingRows = await readRange('Stock!A2:H')
+
+  // Indexer l'existant par clé de déduplication
+  const stockMap = new Map<string, string[]>()
+  for (const row of existingRows) {
+    if (!row[1]) continue
+    const key = deduplicationKey(row[1])
+    stockMap.set(key, row)
+  }
+
+  // Fusionner les nouveaux items
+  for (const item of newItems) {
+    const key = deduplicationKey(item.name)
+
+    if (item.status === 'missing') {
+      // Retirer du stock les items manquants
+      stockMap.delete(key)
+      continue
+    }
+
+    const correctedCategory = correctCategory(item.name, item.category || 'Autre')
+
+    stockMap.set(key, [
+      `${item.name}-${item.location}`,
+      item.name,
+      item.location || 'frigo',
+      item.quantity,
+      item.unit || '',
+      item.status,
+      correctedCategory,
+      dateStr,
+    ])
+  }
+
+  // Réécrire tout l'onglet Stock
+  const header = [['id', 'name', 'category', 'quantity', 'unit', 'status', 'supplier', 'lastUpdated']]
+  const allRows = Array.from(stockMap.values())
+
+  if (allRows.length > 0) {
+    await writeRange('Stock!A1:H1', header)
+    await writeRange(`Stock!A2:H${allRows.length + 1}`, allRows)
+
+    // Effacer les lignes en trop (si le stock a rétréci)
+    const oldCount = existingRows.length
+    if (oldCount > allRows.length) {
+      const emptyRows = Array.from({ length: oldCount - allRows.length }, () =>
+        ['', '', '', '', '', '', '', '']
+      )
+      await writeRange(`Stock!A${allRows.length + 2}:H${oldCount + 1}`, emptyRows)
+    }
   }
 }

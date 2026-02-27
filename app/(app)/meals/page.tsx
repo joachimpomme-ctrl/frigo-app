@@ -1,7 +1,7 @@
 'use client'
 
 import { AppHeader } from '@/components/AppHeader'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { cn } from '@/lib/utils'
 
 type Step = 'loading' | 'ready' | 'empty' | 'error'
@@ -25,6 +25,15 @@ interface MealPlan {
   shopping_tip: string
 }
 
+interface SavedMealData {
+  plan: MealPlan
+  stockHash: string
+  stockCount: number
+  generatedAt: string // ISO date
+}
+
+const STORAGE_KEY = 'frigo-meal-plan'
+
 const TAG_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
   'veggie':        { label: 'Végé',          bg: 'bg-emerald-100', text: 'text-emerald-700' },
   'vegan':         { label: 'Vegan',         bg: 'bg-green-100',   text: 'text-green-700' },
@@ -42,10 +51,35 @@ export default function MealsPage() {
   const [stockCount, setStockCount] = useState(0)
   const [stockHash, setStockHash]   = useState('')
   const [staleStock, setStaleStock] = useState(false)
+  const [generatedAt, setGeneratedAt] = useState('')
   const [errorMsg, setErrorMsg]     = useState('')
   const [selectedDay, setSelectedDay] = useState(0)
+  const stockHashRef = useRef('')
+  const stepRef = useRef<Step>('loading')
 
-  const fetchMeals = async () => {
+  // Garder les refs à jour pour les callbacks
+  useEffect(() => { stockHashRef.current = stockHash }, [stockHash])
+  useEffect(() => { stepRef.current = step }, [step])
+
+  // --- Charger depuis localStorage au montage ---
+  useEffect(() => {
+    const saved = loadFromStorage()
+    if (saved) {
+      setPlan(saved.plan)
+      setStockCount(saved.stockCount)
+      setStockHash(saved.stockHash)
+      setGeneratedAt(saved.generatedAt)
+      setSelectedDay(0)
+      setStep('ready')
+    } else {
+      // Pas de menu sauvegardé → générer
+      generateMeals()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // --- Générer de nouveaux menus (appel API + sauvegarde) ---
+  const generateMeals = async () => {
     setStep('loading')
     setErrorMsg('')
     setStaleStock(false)
@@ -63,47 +97,62 @@ export default function MealsPage() {
         throw new Error(data.error || 'Erreur serveur')
       }
 
-      setPlan(data.data)
-      setStockCount(data.stockCount || 0)
-      setStockHash(data.stockHash || '')
+      const newPlan = data.data as MealPlan
+      const newStockHash = data.stockHash || ''
+      const newStockCount = data.stockCount || 0
+      const now = new Date().toISOString()
+
+      setPlan(newPlan)
+      setStockCount(newStockCount)
+      setStockHash(newStockHash)
+      setGeneratedAt(now)
       setSelectedDay(0)
       setStep('ready')
+
+      // Sauvegarder dans localStorage
+      saveToStorage({
+        plan: newPlan,
+        stockHash: newStockHash,
+        stockCount: newStockCount,
+        generatedAt: now,
+      })
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Erreur inattendue')
       setStep('error')
     }
   }
 
-  // Vérifier si le stock a changé quand l'utilisateur revient sur la page
-  const checkStockFreshness = async () => {
-    if (!stockHash || step !== 'ready') return
+  // --- Vérifier si le stock a changé ---
+  const checkStockFreshness = useCallback(async () => {
+    const hash = stockHashRef.current
+    if (!hash || stepRef.current !== 'ready') return
     try {
-      const res = await fetch('/api/meal-suggestions/check?hash=' + stockHash)
+      const res = await fetch('/api/meal-suggestions/check?hash=' + hash)
       const data = await res.json()
       if (data.changed) {
         setStaleStock(true)
       }
     } catch { /* silently ignore */ }
-  }
+  }, [])
 
-  useEffect(() => { fetchMeals() }, [])
-
-  // Re-vérifier quand la page reprend le focus (retour depuis /fridge par ex.)
+  // Re-vérifier quand la page reprend le focus (retour depuis /fridge)
   useEffect(() => {
     const onFocus = () => checkStockFreshness()
-    window.addEventListener('focus', onFocus)
-    // Aussi vérifier avec l'API de visibilité (changement d'onglet mobile)
     const onVisibility = () => {
       if (document.visibilityState === 'visible') checkStockFreshness()
     }
+    window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  })
+  }, [checkStockFreshness])
 
   const currentDay = plan?.days[selectedDay]
+
+  // Formater la date de génération
+  const generatedLabel = generatedAt ? formatRelativeDate(generatedAt) : ''
 
   return (
     <>
@@ -151,7 +200,7 @@ export default function MealsPage() {
                 {errorMsg}
               </p>
             </div>
-            <button onClick={fetchMeals} className="btn-secondary w-full">
+            <button onClick={generateMeals} className="btn-secondary w-full">
               Réessayer
             </button>
           </div>
@@ -164,7 +213,7 @@ export default function MealsPage() {
             {/* Bandeau stock mis à jour */}
             {staleStock && (
               <button
-                onClick={fetchMeals}
+                onClick={generateMeals}
                 className="w-full card px-4 py-3 flex items-center gap-3 border-l-4 border-l-forest-500
                            active:bg-cream-50 transition-colors animate-fade-up"
               >
@@ -183,16 +232,16 @@ export default function MealsPage() {
               </button>
             )}
 
-            {/* Stock badge */}
+            {/* Stock badge + date de génération */}
             <div className="flex items-center justify-between">
               <p className="text-xs text-stone-warm/60 font-body">
-                Basé sur {stockCount} aliments en stock
+                {stockCount} aliments · {generatedLabel}
               </p>
               <button
-                onClick={fetchMeals}
+                onClick={generateMeals}
                 className="text-xs font-medium text-forest-600 font-body active:text-forest-800"
               >
-                Regénérer
+                Nouveaux menus
               </button>
             </div>
 
@@ -200,7 +249,6 @@ export default function MealsPage() {
             <div className="flex gap-2 overflow-x-auto pb-1 -mx-5 px-5 scrollbar-hide">
               {plan.days.map((day, i) => {
                 const active = i === selectedDay
-                // Extraire le jour de la semaine (avant l'espace)
                 const shortDay = day.date.split(' ')[0].slice(0, 3)
                 const dayNum = day.date.split(' ')[1]
                 return (
@@ -259,6 +307,48 @@ export default function MealsPage() {
       </div>
     </>
   )
+}
+
+// ============================================================
+// Persistance localStorage
+// ============================================================
+
+function saveToStorage(data: SavedMealData): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+  } catch { /* quota exceeded or unavailable */ }
+}
+
+function loadFromStorage(): SavedMealData | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const data = JSON.parse(raw) as SavedMealData
+    if (!data.plan?.days || !Array.isArray(data.plan.days)) return null
+    return data
+  } catch {
+    return null
+  }
+}
+
+// ============================================================
+// Date relative
+// ============================================================
+
+function formatRelativeDate(iso: string): string {
+  const date = new Date(iso)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMin = Math.floor(diffMs / 60000)
+  const diffH = Math.floor(diffMin / 60)
+  const diffD = Math.floor(diffH / 24)
+
+  if (diffMin < 1) return 'généré à l\'instant'
+  if (diffMin < 60) return `généré il y a ${diffMin} min`
+  if (diffH < 24) return `généré il y a ${diffH}h`
+  if (diffD === 1) return 'généré hier'
+  if (diffD < 7) return `généré il y a ${diffD} jours`
+  return `généré le ${date.toLocaleDateString('fr-FR')}`
 }
 
 // ============================================================
