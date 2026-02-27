@@ -32,31 +32,64 @@ function getSupplierConfig(name: string) {
   return SUPPLIER_CONFIG[name] || { emoji: '📦', color: '#8c7b6b' }
 }
 
+const MAX_FILE_SIZE_MB = 20
+const MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024
+
 export default function ImportPage() {
-  const [step, setStep]       = useState<Step>('idle')
-  const [file, setFile]       = useState<File | null>(null)
-  const [result, setResult]   = useState<ParsedOrder | null>(null)
+  const [step, setStep]             = useState<Step>('idle')
+  const [file, setFile]             = useState<File | null>(null)
+  const [result, setResult]         = useState<ParsedOrder | null>(null)
   const [itemsCount, setItemsCount] = useState(0)
-  const fileInputRef          = useRef<HTMLInputElement>(null)
+  const [errorMsg, setErrorMsg]     = useState('')
+  const [convertProgress, setConvertProgress] = useState('')
+  const fileInputRef                = useRef<HTMLInputElement>(null)
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
+
+    // Validation du fichier
+    const isPdf = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')
+    const isImage = f.type.startsWith('image/')
+
+    if (!isPdf && !isImage) {
+      setErrorMsg('Format non supporté. Utilisez un PDF ou une image (JPG, PNG).')
+      setStep('error')
+      return
+    }
+
+    if (f.size > MAX_FILE_SIZE) {
+      setErrorMsg(`Fichier trop volumineux (${(f.size / 1024 / 1024).toFixed(1)} Mo). Maximum : ${MAX_FILE_SIZE_MB} Mo.`)
+      setStep('error')
+      return
+    }
+
     setFile(f)
     setStep('preview')
     setResult(null)
+    setErrorMsg('')
   }
 
-  // Convertir un PDF en images PNG (base64) via pdf.js dans le navigateur
+  // Convertir un PDF en images JPEG (base64) via pdf.js dans le navigateur
   const pdfToImages = async (pdfFile: File): Promise<string[]> => {
     const arrayBuffer = await pdfFile.arrayBuffer()
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-    const images: string[] = []
 
-    // Limiter à 10 pages max pour éviter les timeouts
+    let pdf: Awaited<ReturnType<typeof pdfjsLib.getDocument>>['promise'] extends Promise<infer T> ? T : never
+    try {
+      pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+    } catch {
+      throw new Error('PDF_CORRUPTED')
+    }
+
+    if (pdf.numPages === 0) {
+      throw new Error('PDF_EMPTY')
+    }
+
+    const images: string[] = []
     const pageCount = Math.min(pdf.numPages, 10)
 
     for (let i = 1; i <= pageCount; i++) {
+      setConvertProgress(`Page ${i}/${pageCount}`)
       const page = await pdf.getPage(i)
       // Scale 2x pour une bonne lisibilité par Claude
       const scale = 2
@@ -69,7 +102,7 @@ export default function ImportPage() {
 
       await page.render({ canvasContext: ctx, viewport }).promise
 
-      // Convertir en JPEG base64 (bien plus léger que PNG pour l'envoi)
+      // JPEG 85% : bon ratio qualité/poids
       const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
       const base64 = dataUrl.split(',')[1]
       images.push(base64)
@@ -78,25 +111,59 @@ export default function ImportPage() {
     return images
   }
 
+  // Convertir une image directement en base64
+  const imageToBase64 = (imageFile: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = reader.result as string
+        const base64 = result.split(',')[1]
+        resolve(base64)
+      }
+      reader.onerror = () => reject(new Error('IMAGE_READ_ERROR'))
+      reader.readAsDataURL(imageFile)
+    })
+  }
+
   const handleAnalyze = async () => {
     if (!file) return
+    setErrorMsg('')
 
     try {
-      // Étape 1 : convertir le PDF en images côté navigateur
-      setStep('converting')
-      const images = await pdfToImages(file)
+      let images: string[]
+      let mediaType: string
+
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+
+      if (isPdf) {
+        // Étape 1 : convertir le PDF en images côté navigateur
+        setStep('converting')
+        setConvertProgress('')
+        images = await pdfToImages(file)
+        mediaType = 'image/jpeg'
+      } else {
+        // Image directe : envoyer telle quelle
+        setStep('converting')
+        setConvertProgress('Lecture...')
+        const base64 = await imageToBase64(file)
+        images = [base64]
+        // Détecter le type MIME
+        mediaType = file.type || 'image/jpeg'
+      }
 
       // Étape 2 : envoyer les images au serveur
       setStep('analyzing')
       const res = await fetch('/api/import-invoice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ images, filename: file.name }),
+        body: JSON.stringify({ images, mediaType, filename: file.name }),
       })
 
       const data = await res.json()
 
-      if (!res.ok) throw new Error(data.error || 'Erreur serveur')
+      if (!res.ok) {
+        throw new Error(data.error || 'Erreur serveur')
+      }
 
       setResult(data.data)
       setItemsCount(data.itemsCount || 0)
@@ -108,6 +175,18 @@ export default function ImportPage() {
       }
 
     } catch (err) {
+      const msg = err instanceof Error ? err.message : ''
+      if (msg === 'PDF_CORRUPTED') {
+        setErrorMsg('Ce PDF semble corrompu ou protégé par mot de passe. Essayez de le ré-exporter.')
+      } else if (msg === 'PDF_EMPTY') {
+        setErrorMsg('Ce PDF ne contient aucune page.')
+      } else if (msg === 'IMAGE_READ_ERROR') {
+        setErrorMsg('Impossible de lire cette image.')
+      } else if (msg.includes('parse') || msg.includes('JSON')) {
+        setErrorMsg('Claude n\'a pas réussi à structurer les données de cette facture. Réessayez ou utilisez un autre format.')
+      } else {
+        setErrorMsg(msg || 'Une erreur est survenue lors de l\'analyse.')
+      }
       setStep('error')
     }
   }
@@ -116,6 +195,8 @@ export default function ImportPage() {
     setStep('idle')
     setFile(null)
     setResult(null)
+    setErrorMsg('')
+    setConvertProgress('')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -123,7 +204,7 @@ export default function ImportPage() {
 
   return (
     <>
-      <AppHeader title="Importer une facture" subtitle="PDF → historique automatique" />
+      <AppHeader title="Importer une facture" subtitle="PDF ou image → historique automatique" />
 
       <div className="px-5 py-6 space-y-5">
 
@@ -137,7 +218,7 @@ export default function ImportPage() {
                 ref={fileInputRef}
                 id="pdf-upload"
                 type="file"
-                accept="application/pdf"
+                accept="application/pdf,image/jpeg,image/png,image/webp"
                 onChange={handleFile}
                 className="hidden"
               />
@@ -148,13 +229,13 @@ export default function ImportPage() {
                   <span className="text-4xl">📄</span>
                 </div>
                 <h2 className="font-display text-xl text-forest-800 mb-2">
-                  Déposez une facture PDF
+                  Importez une facture
                 </h2>
                 <p className="text-sm text-stone-warm/70 font-body mb-6 max-w-xs">
-                  Claude analyse automatiquement le fournisseur, la date, le total et tous les articles
+                  PDF, photo ou capture d'écran — Claude analyse automatiquement le fournisseur, la date et les articles
                 </p>
                 <span className="btn-primary pointer-events-none">
-                  📂 Choisir un PDF
+                  📂 Choisir un fichier
                 </span>
               </div>
             </label>
@@ -180,7 +261,7 @@ export default function ImportPage() {
             {/* How it works */}
             <div className="space-y-2.5">
               {[
-                { step: '1', text: 'Téléchargez la facture PDF depuis l\'email du fournisseur' },
+                { step: '1', text: 'Téléchargez la facture PDF ou prenez une photo' },
                 { step: '2', text: 'Importez-la ici — Claude lit et structure les données' },
                 { step: '3', text: 'La commande apparaît dans votre historique' },
               ].map(item => (
@@ -200,12 +281,14 @@ export default function ImportPage() {
           <div className="animate-scale-in space-y-4">
             <div className="card px-4 py-4 flex items-center gap-3">
               <div className="w-12 h-12 rounded-2xl bg-terra-100 flex items-center justify-center flex-shrink-0">
-                <span className="text-2xl">📄</span>
+                <span className="text-2xl">
+                  {file.type.startsWith('image/') ? '🖼️' : '📄'}
+                </span>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-forest-800 font-body truncate">{file.name}</p>
                 <p className="text-xs text-stone-warm/60 font-body">
-                  {(file.size / 1024).toFixed(0)} Ko · PDF
+                  {(file.size / 1024).toFixed(0)} Ko · {file.type.startsWith('image/') ? 'Image' : 'PDF'}
                 </p>
               </div>
             </div>
@@ -221,9 +304,9 @@ export default function ImportPage() {
         {step === 'converting' && (
           <div className="flex flex-col items-center justify-center py-24 animate-fade-in">
             <div className="w-16 h-16 border-[3px] border-forest-200 border-t-forest-700 rounded-full animate-spin mb-6" />
-            <p className="font-display text-lg text-forest-800 mb-1">Lecture du PDF…</p>
+            <p className="font-display text-lg text-forest-800 mb-1">Lecture du fichier…</p>
             <p className="text-sm text-stone-warm/60 font-body text-center max-w-xs">
-              Conversion des pages en images
+              {convertProgress || 'Préparation en cours'}
             </p>
           </div>
         )}
@@ -333,7 +416,7 @@ export default function ImportPage() {
                 Impossible d'analyser ce document
               </p>
               <p className="text-sm text-stone-warm/70 font-body">
-                Vérifiez que le fichier est bien un PDF lisible (non scanné ou protégé).
+                {errorMsg || 'Vérifiez que le fichier est bien un PDF ou une image lisible.'}
               </p>
             </div>
             <button onClick={reset} className="btn-secondary w-full">
