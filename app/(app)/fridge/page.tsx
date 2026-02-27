@@ -1,7 +1,7 @@
 'use client'
 
 import { AppHeader } from '@/components/AppHeader'
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
 
 type AppStep = 'idle' | 'analyzing' | 'editing' | 'saving' | 'saved'
@@ -59,17 +59,12 @@ export default function FridgePage() {
   const [newItem, setNewItem]     = useState({ name: '', quantity: '', unit: '' })
   const [statusFilter, setStatusFilter] = useState<'ok' | 'low' | 'missing' | null>(null)
   const [photoCount, setPhotoCount] = useState(0)
-  const fileInputRef              = useRef<HTMLInputElement>(null)
-  const galleryInputRef           = useRef<HTMLInputElement>(null)
-  const addMoreInputRef           = useRef<HTMLInputElement>(null)
-
   // --- Scan photos (multiple) ---
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
-    if (e.target === fileInputRef.current && fileInputRef.current) fileInputRef.current.value = ''
-    if (e.target === galleryInputRef.current && galleryInputRef.current) galleryInputRef.current.value = ''
-    if (e.target === addMoreInputRef.current && addMoreInputRef.current) addMoreInputRef.current.value = ''
+    // Reset input value so the same file can be selected again
+    e.target.value = ''
 
     setStep('analyzing')
     setError(null)
@@ -216,7 +211,7 @@ export default function FridgePage() {
 
       {/* File input for camera (capture) */}
       <input
-        ref={fileInputRef}
+        id="camera-input"
         type="file"
         accept="image/*"
         capture="environment"
@@ -225,7 +220,7 @@ export default function FridgePage() {
       />
       {/* File input for gallery (multiple, no capture) */}
       <input
-        ref={galleryInputRef}
+        id="gallery-input"
         type="file"
         accept="image/*"
         multiple
@@ -234,7 +229,7 @@ export default function FridgePage() {
       />
       {/* File input for adding more photos in editing mode */}
       <input
-        ref={addMoreInputRef}
+        id="addmore-input"
         type="file"
         accept="image/*"
         multiple
@@ -260,18 +255,18 @@ export default function FridgePage() {
                 Vous pourrez ajouter d'autres photos après l'analyse
               </p>
               <div className="flex gap-3 w-full max-w-xs">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="btn-primary flex-1"
+                <label
+                  htmlFor="camera-input"
+                  className="btn-primary flex-1 cursor-pointer"
                 >
                   📷 Photo
-                </button>
-                <button
-                  onClick={() => galleryInputRef.current?.click()}
-                  className="btn-secondary flex-1"
+                </label>
+                <label
+                  htmlFor="gallery-input"
+                  className="btn-secondary flex-1 cursor-pointer"
                 >
                   🖼️ Galerie
-                </button>
+                </label>
               </div>
             </div>
 
@@ -349,9 +344,9 @@ export default function FridgePage() {
             </div>
 
             {/* Bouton ajouter des photos (toujours visible en mode editing) */}
-            <div
-              onClick={() => addMoreInputRef.current?.click()}
-              className="card px-4 py-3.5 border-2 border-dashed border-forest-200 cursor-pointer"
+            <label
+              htmlFor="addmore-input"
+              className="card block px-4 py-3.5 border-2 border-dashed border-forest-200 cursor-pointer"
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-forest-100 flex items-center justify-center flex-shrink-0">
@@ -365,7 +360,7 @@ export default function FridgePage() {
                 </div>
                 <span className="text-forest-400 text-xl">+</span>
               </div>
-            </div>
+            </label>
 
             {/* Stats rapides — cliquables pour filtrer */}
             {items.length > 0 && (
@@ -627,9 +622,9 @@ export default function FridgePage() {
             </div>
 
             {/* Bouton ajouter des photos à l'inventaire */}
-            <div
-              onClick={() => addMoreInputRef.current?.click()}
-              className="card px-4 py-4 border-2 border-dashed border-forest-200 cursor-pointer"
+            <label
+              htmlFor="addmore-input"
+              className="card block px-4 py-4 border-2 border-dashed border-forest-200 cursor-pointer"
             >
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-xl bg-forest-100 flex items-center justify-center flex-shrink-0">
@@ -643,7 +638,7 @@ export default function FridgePage() {
                 </div>
                 <span className="text-forest-400 text-2xl font-light">+</span>
               </div>
-            </div>
+            </label>
 
             {/* Résumé — cliquable pour filtrer */}
             <div className="grid grid-cols-3 gap-2">
