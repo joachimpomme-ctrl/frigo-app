@@ -61,8 +61,10 @@ export default function FridgePage() {
   const [photoCount, setPhotoCount] = useState(0)
   // --- Scan photos (multiple) ---
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0) return
+    const fileList = e.target.files
+    if (!fileList || fileList.length === 0) return
+    // Copy files into an array BEFORE resetting (FileList is a live reference)
+    const files = Array.from(fileList)
     // Reset input value so the same file can be selected again
     e.target.value = ''
 
@@ -72,8 +74,8 @@ export default function FridgePage() {
 
     try {
       const formData = new FormData()
-      for (let i = 0; i < files.length; i++) {
-        formData.append('image', files[i])
+      for (const file of files) {
+        formData.append('image', file)
       }
 
       const res = await fetch('/api/scan-fridge', { method: 'POST', body: formData })
@@ -209,32 +211,30 @@ export default function FridgePage() {
         subtitle={items.length > 0 ? `${items.length} produits${photoCount > 0 ? ` · ${photoCount} photo${photoCount > 1 ? 's' : ''}` : ''}` : 'Scanner & gérer vos stocks'}
       />
 
-      {/* File input for camera (capture) */}
+      {/* Hidden file inputs — positioned offscreen for reliable label triggering on mobile */}
       <input
         id="camera-input"
         type="file"
         accept="image/*"
         capture="environment"
         onChange={handleFileChange}
-        className="sr-only"
+        style={{ position: 'absolute', left: '-9999px', opacity: 0 }}
       />
-      {/* File input for gallery (multiple, no capture) */}
       <input
         id="gallery-input"
         type="file"
         accept="image/*"
         multiple
         onChange={handleFileChange}
-        className="sr-only"
+        style={{ position: 'absolute', left: '-9999px', opacity: 0 }}
       />
-      {/* File input for adding more photos in editing mode */}
       <input
         id="addmore-input"
         type="file"
         accept="image/*"
         multiple
         onChange={handleFileChange}
-        className="sr-only"
+        style={{ position: 'absolute', left: '-9999px', opacity: 0 }}
       />
 
       <div className="px-5 py-5 space-y-5">
