@@ -13,11 +13,12 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
   try {
-    // Lire les commandes et les produits depuis Google Sheets
-    const [orderRows, productRows, inventoryRows] = await Promise.all([
+    // Lire les commandes, produits, inventaire et feedback
+    const [orderRows, productRows, inventoryRows, feedbackRows] = await Promise.all([
       readRange('Commandes!A2:F500'),
       readRange('Produits!A2:G2000'),
-      readRange('Inventaire!A2:I500'),
+      readRange('Inventaire!A2:I2000'),
+      readRange('Feedback!A2:D2000').catch(() => [] as string[][]),
     ])
 
     const orders = orderRows
@@ -71,7 +72,13 @@ export async function GET(req: NextRequest) {
     const monthlySpending = computeMonthlySpending(orders)
     const lowStockItems = inventory.filter(i => i.status === 'low' || i.status === 'missing')
 
-    // Préparer le contexte pour Claude
+    // Calculer la vélocité de consommation depuis l'historique des scans
+    const consumptionInsights = computeConsumptionVelocity(inventory)
+
+    // Résumer le feedback utilisateur (quels produits sont acceptés/rejetés)
+    const feedbackSummary = computeFeedbackSummary(feedbackRows)
+
+    // Préparer le contexte enrichi pour Claude
     const dataContext = JSON.stringify({
       orders_count: orders.length,
       orders_summary: orders.slice(0, 50).map(o => ({
@@ -87,6 +94,8 @@ export async function GET(req: NextRequest) {
         status: i.status,
         location: i.location,
       })),
+      consumption_velocity: consumptionInsights.slice(0, 15),
+      feedback_summary: feedbackSummary,
       today: new Date().toISOString().split('T')[0],
     })
 
@@ -94,8 +103,11 @@ export async function GET(req: NextRequest) {
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1500,
-      system: `Tu es un assistant d'analyse de courses familiales. On te donne les données d'achat d'une famille.
-Analyse les patterns et donne des recommandations pratiques.
+      system: `Tu es un assistant d'analyse de courses familiales. On te donne les données d'achat d'une famille,
+l'état de leurs stocks (issu de scans photo du frigo), la vélocité de consommation estimée par produit,
+et le feedback de l'utilisateur sur les recommandations passées (acceptées ou rejetées).
+
+Croise ces données pour donner des recommandations pertinentes et personnalisées.
 
 Réponds UNIQUEMENT avec un JSON valide, sans markdown, sans explication.
 Format exact :
@@ -117,9 +129,11 @@ Règles :
 - 1 à 4 next_orders (un par fournisseur actif)
 - 2 à 3 savings_tips
 - Dates au format YYYY-MM-DD
-- Les types d'insights possibles : "frequency", "spending", "pattern", "alert"
-- Les icônes possibles : 📅 (fréquence), 💰 (dépense), 🔄 (pattern), ⚠️ (alerte), 🛒 (courses)
+- Les types d'insights possibles : "frequency", "spending", "pattern", "alert", "consumption"
+- Les icônes possibles : 📅 (fréquence), 💰 (dépense), 🔄 (pattern), ⚠️ (alerte), 🛒 (courses), 📉 (consommation)
 - Sois concret : donne des jours, des montants, des noms de produits
+- Utilise la vélocité de consommation (consumption_velocity) pour prédire les ruptures imminentes
+- Tiens compte du feedback : si un produit est souvent rejeté, ne le recommande pas ; si accepté, priorise-le
 - Parle en français`,
       messages: [
         {
@@ -247,4 +261,106 @@ function computeMonthlySpending(orders: Array<{ date: string; total: string }>) 
   return Object.entries(byMonth)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([month, total]) => ({ month, total: parseFloat(total.toFixed(2)) }))
+}
+
+// --- Vélocité de consommation : croise les scans d'inventaire successifs ---
+function computeConsumptionVelocity(
+  inventory: Array<{ sessionId: string; date: string; name: string; status: string }>
+) {
+  // Grouper par session
+  const sessions: Record<string, { date: string; items: Map<string, string> }> = {}
+  for (const item of inventory) {
+    if (!item.sessionId) continue
+    if (!sessions[item.sessionId]) {
+      sessions[item.sessionId] = { date: item.date, items: new Map() }
+    }
+    if (item.name) {
+      sessions[item.sessionId].items.set(item.name.toLowerCase().trim(), item.status)
+    }
+  }
+
+  const sorted = Object.values(sessions).sort((a, b) => b.date.localeCompare(a.date))
+  if (sorted.length < 2) return []
+
+  // Pour chaque produit, observer les transitions ok → low/missing
+  const productTransitions: Record<string, { avgDays: number; occurrences: number }> = {}
+
+  // Collecter tous les noms de produits
+  const allProducts = new Set<string>()
+  for (const s of sorted) {
+    s.items.forEach((_, name) => allProducts.add(name))
+  }
+
+  for (const product of Array.from(allProducts)) {
+    const history: Array<{ date: string; status: string }> = []
+    for (const s of sorted) {
+      const status = s.items.get(product)
+      if (status) {
+        history.push({ date: s.date, status })
+      }
+    }
+
+    if (history.length < 2) continue
+
+    const transitions: number[] = []
+    for (let i = 0; i < history.length - 1; i++) {
+      if (
+        history[i].status === 'ok' &&
+        (history[i + 1].status === 'low' || history[i + 1].status === 'missing')
+      ) {
+        const d1 = new Date(history[i].date).getTime()
+        const d2 = new Date(history[i + 1].date).getTime()
+        if (!isNaN(d1) && !isNaN(d2) && d2 > d1) {
+          transitions.push(Math.round((d2 - d1) / (1000 * 60 * 60 * 24)))
+        }
+      }
+    }
+
+    if (transitions.length > 0) {
+      productTransitions[product] = {
+        avgDays: Math.round(transitions.reduce((a, b) => a + b, 0) / transitions.length),
+        occurrences: transitions.length,
+      }
+    }
+  }
+
+  return Object.entries(productTransitions)
+    .map(([name, data]) => ({
+      product: name.charAt(0).toUpperCase() + name.slice(1),
+      avg_days_to_depletion: data.avgDays,
+      observed_cycles: data.occurrences,
+    }))
+    .sort((a, b) => a.avg_days_to_depletion - b.avg_days_to_depletion)
+}
+
+// --- Résumé du feedback utilisateur ---
+function computeFeedbackSummary(feedbackRows: string[][]) {
+  const byProduct: Record<string, { accepted: number; rejected: number; snoozed: number }> = {}
+
+  for (const row of feedbackRows) {
+    if (!row[1] || !row[2]) continue
+    const key = row[1].toLowerCase().trim()
+    if (!byProduct[key]) byProduct[key] = { accepted: 0, rejected: 0, snoozed: 0 }
+    const action = row[2] as 'accepted' | 'rejected' | 'snoozed'
+    if (byProduct[key][action] !== undefined) {
+      byProduct[key][action]++
+    }
+  }
+
+  const entries = Object.entries(byProduct)
+  if (entries.length === 0) return null
+
+  return {
+    total_feedback: entries.reduce((sum, [, v]) => sum + v.accepted + v.rejected + v.snoozed, 0),
+    most_accepted: entries
+      .filter(([, v]) => v.accepted > 0)
+      .sort(([, a], [, b]) => b.accepted - a.accepted)
+      .slice(0, 5)
+      .map(([name, v]) => ({ product: name, accepted: v.accepted })),
+    most_rejected: entries
+      .filter(([, v]) => v.rejected > 0)
+      .sort(([, a], [, b]) => b.rejected - a.rejected)
+      .slice(0, 5)
+      .map(([name, v]) => ({ product: name, rejected: v.rejected })),
+  }
 }

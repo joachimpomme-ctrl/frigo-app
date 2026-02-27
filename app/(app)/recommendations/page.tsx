@@ -10,10 +10,11 @@ interface Recommendation {
   name: string
   reason: string
   urgency: 'high' | 'medium' | 'low'
-  source: 'inventory' | 'frequency' | 'history'
+  source: 'inventory' | 'frequency' | 'history' | 'prediction'
   supplier: string
   suggestedQuantity: string
   lastSeen: string
+  confidence: number
 }
 
 interface Counts {
@@ -33,6 +34,7 @@ const SOURCE_LABELS: Record<string, string> = {
   inventory: 'Inventaire',
   frequency: 'Habitude d\'achat',
   history: 'Stock',
+  prediction: 'Prédiction IA',
 }
 
 const SUPPLIER_CONFIG: Record<string, { emoji: string; color: string }> = {
@@ -88,18 +90,37 @@ export default function RecommendationsPage() {
     }
   }
 
+  // Envoyer un feedback au moteur d'apprentissage (fire-and-forget)
+  const sendFeedback = (productName: string, action: 'accepted' | 'rejected' | 'snoozed', source: string) => {
+    fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productName, action, source }),
+    }).catch(() => {}) // silencieux, ne bloque pas l'UI
+  }
+
+  const dismissRec = (rec: Recommendation) => {
+    sendFeedback(rec.name, 'rejected', rec.source)
+    setRecs(prev => prev.filter(r => r.id !== rec.id))
+    setCounts(prev => ({
+      ...prev,
+      [rec.urgency]: prev[rec.urgency] - 1,
+      total: prev.total - 1,
+    }))
+    setSelected(prev => { const n = new Set(prev); n.delete(rec.id); return n })
+  }
+
   const addToList = async () => {
     if (selected.size === 0) return
     setAdding(true)
     setAddResult(null)
 
-    const items = recs
-      .filter(r => selected.has(r.id))
-      .map(r => ({
-        name: r.name,
-        quantity: r.suggestedQuantity || '1',
-        supplier: r.supplier || '',
-      }))
+    const selectedRecs = recs.filter(r => selected.has(r.id))
+    const items = selectedRecs.map(r => ({
+      name: r.name,
+      quantity: r.suggestedQuantity || '1',
+      supplier: r.supplier || '',
+    }))
 
     try {
       const res = await fetch('/api/shopping-list', {
@@ -111,11 +132,15 @@ export default function RecommendationsPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
 
+      // Envoyer feedback "accepted" pour chaque produit ajouté
+      for (const rec of selectedRecs) {
+        sendFeedback(rec.name, 'accepted', rec.source)
+      }
+
       setAddResult(data.message)
-      // Retirer les items ajoutés de la liste
       setRecs(prev => prev.filter(r => !selected.has(r.id)))
       setCounts(prev => {
-        const removed = recs.filter(r => selected.has(r.id))
+        const removed = selectedRecs
         return {
           high: prev.high - removed.filter(r => r.urgency === 'high').length,
           medium: prev.medium - removed.filter(r => r.urgency === 'medium').length,
@@ -263,17 +288,11 @@ export default function RecommendationsPage() {
                     )}
                     style={{ animationDelay: `${i * 30}ms` }}
                   >
-                    {/* Bouton supprimer */}
+                    {/* Bouton rejeter (envoie un feedback "rejected") */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        setRecs(prev => prev.filter(r => r.id !== rec.id))
-                        setCounts(prev => ({
-                          ...prev,
-                          [rec.urgency]: prev[rec.urgency] - 1,
-                          total: prev.total - 1,
-                        }))
-                        setSelected(prev => { const n = new Set(prev); n.delete(rec.id); return n })
+                        dismissRec(rec)
                       }}
                       className="absolute top-2 right-2 w-6 h-6 rounded-full bg-cream-100 flex items-center justify-center text-stone-warm/40 active:bg-red-50 active:text-red-400 transition-colors z-10"
                     >
@@ -314,10 +333,23 @@ export default function RecommendationsPage() {
                             {rec.reason}
                           </p>
 
-                          <div className="flex items-center gap-2 mt-1.5">
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                             <span className="text-[10px] text-stone-warm/40 font-body">
                               {SOURCE_LABELS[rec.source] || rec.source}
                             </span>
+                            {rec.confidence > 0 && (
+                              <>
+                                <span className="text-stone-warm/20">·</span>
+                                <span className={cn(
+                                  'text-[10px] font-body font-medium',
+                                  rec.confidence >= 70 ? 'text-forest-500' :
+                                  rec.confidence >= 40 ? 'text-terra-400' :
+                                  'text-stone-warm/40'
+                                )}>
+                                  {rec.confidence >= 70 ? 'Fiable' : rec.confidence >= 40 ? 'Probable' : 'Indicatif'}
+                                </span>
+                              </>
+                            )}
                             {rec.supplier && (
                               <>
                                 <span className="text-stone-warm/20">·</span>
